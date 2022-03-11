@@ -30,14 +30,14 @@ type trackerResponse struct {
 	Warning string `bencode:"warning message"` // warning message
 
 	Interval   int `bencode:"interval"`     // interval to reconnect after
-	MinIntrval int `bencode:"min interval"` // minimum intercal to reconnect after
+	MinIntrval int `bencode:"min interval"` // minimum interval to reconnect after
 
 	TrackerID string `bencode:"tracker id"` // id of the tracker
 
 	CompletePeers   int `bencode:"complete"`   // number of peers with complete pieces
 	IncompletePeers int `bencode:"incomplete"` // number of peers with incomplete pieces
 
-	Peers string `bencode:"peers"` // compact peer ip and ports
+	Peers string `bencode:"peers"` // compact peer ips and ports
 }
 
 // requestTracker requests to t's tracker and returns the parsed response.
