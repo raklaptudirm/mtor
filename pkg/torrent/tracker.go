@@ -94,7 +94,7 @@ func (t *Torrent) Tracker() (string, error) {
 		"downloaded": []string{"0"},
 		"left":       []string{strconv.Itoa(t.Length)},
 		"compact":    []string{"1"},
-		"numwant":    []string{"50"}, // request 50 peers
+		"numwant":    []string{"500"}, // request 500 peers
 	}
 	base.RawQuery = params.Encode()
 
