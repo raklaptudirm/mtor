@@ -30,43 +30,49 @@ type Torrent struct {
 
 	PieceHashes [][20]byte // hash of each torrent piece
 	PieceLength int        // length of each piece in bytes
-	Length      int        // total length of the file
+	Length      int        // total length of the torrent
 
 	Name [20]byte // client identifier
 	Port uint16   // port the client is listening on
 }
 
+// startClient tries to connect to the peer p, and if successful, downloads
+// the torrent pieces from that peer.
 func (t *Torrent) startClient(p peer.Peer, w chan *Piece, r chan *PieceResult) {
+	// try to connect to peer
 	conn, err := peer.NewConn(p, t.InfoHash, t.Name)
 	if err != nil {
-		//fmt.Printf("mtor: failed connection to peer %s\n", p)
-		//fmt.Println(err)
 		return
 	}
 	defer conn.Conn.Close()
 
-	conn.UnChoke()
+	conn.UnChoke() // un-choke peer
 	conn.Interested()
 
 	fmt.Printf("mtor: connected to peer %s\n", p)
 
+	// get pieces from work channel
 	for piece := range w {
+		// check if peer has piece
 		if !conn.Bitfield.Has(piece.index) {
 			w <- piece
 			continue
 		}
 
+		// download piece from peer
 		block, err := downloadBlock(conn, piece)
 		if err != nil {
 			w <- piece
 			return
 		}
 
+		// check the integrity of downloaded piece
 		if !checkIntegrity(piece, block) {
 			w <- piece
 			continue
 		}
 
+		// send downloaded piece to results channel
 		r <- &PieceResult{
 			index: piece.index,
 			value: block,
@@ -75,10 +81,14 @@ func (t *Torrent) startClient(p peer.Peer, w chan *Piece, r chan *PieceResult) {
 }
 
 const (
-	MaxBacklog   = 20
+	// MaxBacklog represents the maximum number of requests that can be in backlog.
+	MaxBacklog = 20
+	// MaxBlock size represents the maximum number of bytes that can be requested
+	// at a time.
 	MaxBlockSize = 16384 // 16 kb
 )
 
+// downloadBlock downloads a piece from a peer connection.
 func downloadBlock(conn *peer.Conn, p *Piece) ([]byte, error) {
 	progress := PieceProgress{
 		index: p.index,
@@ -86,17 +96,22 @@ func downloadBlock(conn *peer.Conn, p *Piece) ([]byte, error) {
 		conn:  conn,
 	}
 
+	// set download deadline
 	conn.Conn.SetDeadline(time.Now().Add(20 * time.Second))
-	defer conn.Conn.SetDeadline(time.Time{})
+	defer conn.Conn.SetDeadline(time.Time{}) // disable deadline
 
+	// repeat till number of bytes downloaded is less than total
 	for progress.downloaded < p.length {
 		if !conn.Choked {
 			for progress.backlog < MaxBacklog && progress.requested < p.length {
+				// calculate block size
 				size := MaxBlockSize
+				// last block is of irregular size
 				if p.length-progress.requested < size {
 					size = p.length - progress.requested
 				}
 
+				// request block
 				err := conn.Request(p.index, progress.requested, size)
 				if err != nil {
 					return nil, err
@@ -115,23 +130,29 @@ func downloadBlock(conn *peer.Conn, p *Piece) ([]byte, error) {
 	return progress.buf, nil
 }
 
+// checkIntegrity checks if the dowloaded piece's hash matches the expected
+// hash.
 func checkIntegrity(p *Piece, block []byte) bool {
 	hash := sha1.Sum(block)
 	return p.hash == hash
 }
 
+// Download downloads the t torrent and stores the downloaded pieces into
+// the provided PieceManager.
 func (t *Torrent) Download(p PieceManager) error {
 	start := time.Now()
 
 	length := len(t.PieceHashes)
 
+	// get peers from tracker
 	peers, err := t.Peers()
 	if err != nil {
 		return err
 	}
 
-	pieces := make(chan *Piece, length)
-	result := make(chan *PieceResult)
+	pieces := make(chan *Piece, length) // create work channel
+	result := make(chan *PieceResult)   // create result channel
+	// send pieces into work channel
 	for index, hash := range t.PieceHashes {
 		pieces <- &Piece{
 			index:  index,
@@ -140,6 +161,7 @@ func (t *Torrent) Download(p PieceManager) error {
 		}
 	}
 
+	// start peer connections (maybe do this first?)
 	for _, peer := range peers {
 		go t.startClient(peer, pieces, result)
 	}
@@ -160,13 +182,17 @@ func (t *Torrent) Download(p PieceManager) error {
 	return nil
 }
 
+// pieceLen calculates the length of the piece with the provided index.
 func (t *Torrent) pieceLen(index int) int {
-	begin := index * t.PieceLength
-	end := begin + t.PieceLength
+	begin := index * t.PieceLength // beginning of piece
+	end := begin + t.PieceLength   // end of piece
 
+	// last piece is irregular in length
 	if end > t.Length {
 		return t.Length - begin
 	}
+
+	// not last piece, default length
 	return t.PieceLength
 }
 

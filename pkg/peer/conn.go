@@ -22,52 +22,62 @@ import (
 	"github.com/raklaptudirm/mtor/pkg/message"
 )
 
+// Conn represents a p2p connection to a peer.
 type Conn struct {
-	Conn     net.Conn
-	Choked   bool
-	Peer     Peer
-	Bitfield bitfield.Bitfield
-	InfoHash [20]byte
-	Name     [20]byte
+	Conn     net.Conn          // the connection with the peer
+	Choked   bool              // wether the peer is choking
+	Peer     Peer              // the peer with the connection
+	Bitfield bitfield.Bitfield // peer's bitfield
+	InfoHash [20]byte          // torrent infohash
+	Name     [20]byte          // peer's identifier
 }
 
+// Read reads a Message from the Conn.
 func (c *Conn) Read() (*message.Message, error) {
 	return message.Read(c.Conn)
 }
 
+// UnChoke sends an UnChoke message to the Conn.
 func (c *Conn) UnChoke() error {
 	m := &message.Message{Identifier: message.UnChoke}
 	_, err := c.Conn.Write(m.Serialize())
 	return err
 }
 
+// Interested sends an Interested message to the Conn.
 func (c *Conn) Interested() error {
 	m := &message.Message{Identifier: message.Interested}
 	_, err := c.Conn.Write(m.Serialize())
 	return err
 }
 
+// Request sends a Request message to the Conn.
 func (c *Conn) Request(index, begin, length int) error {
 	req := message.NewReqest(index, begin, length)
 	_, err := c.Conn.Write(req.Serialize())
 	return err
 }
 
+// handshake tries to complete a proper handshake with the peer.
 func (p *Peer) handshake(conn net.Conn, hash, name [20]byte) (*message.Handshake, error) {
+	// set handshake deadline
 	conn.SetDeadline(time.Now().Add(5 * time.Second))
-	defer conn.SetDeadline(time.Time{})
+	defer conn.SetDeadline(time.Time{}) // disable deadline
 
+	// send a handshake to the peer
 	req := message.NewHandshake(hash, name)
 	_, err := conn.Write(req.Serialize())
 	if err != nil {
 		return nil, err
 	}
 
+	// await a handshake from the peer
 	res, err := message.ReadHandshake(conn)
 	if err != nil {
 		return nil, err
 	}
 
+	// verify the peer's handshake
 	if err := res.Verify(hash); err != nil {
 		return nil, err
 	}
@@ -75,15 +85,19 @@ func (p *Peer) handshake(conn net.Conn, hash, name [20]byte) (*message.Handshake
 	return res, nil
 }
 
+// getBitfield reads a serialized bitfield from the Conn.
 func getBitfield(conn net.Conn) (bitfield.Bitfield, error) {
+	// set bitfield deadline
 	conn.SetDeadline(time.Now().Add(5 * time.Second))
-	defer conn.SetDeadline(time.Time{})
+	defer conn.SetDeadline(time.Time{}) // disable deadline
 
+	// await message from peer
 	msg, err := message.Read(conn)
 	if err != nil {
 		return nil, err
 	}
 
+	// expect Message of type Bitfield
 	if msg.Identifier != message.Bitfield {
 		return nil, fmt.Errorf("expected bitfield message, received %v", msg.Identifier)
 	}
@@ -91,17 +105,21 @@ func getBitfield(conn net.Conn) (bitfield.Bitfield, error) {
 	return msg.Payload, nil
 }
 
+// NewConn creates a new p2p Conn with the provided peer.
 func NewConn(peer Peer, hash, name [20]byte) (*Conn, error) {
+	// dial a tcp connection with peer
 	conn, err := net.DialTimeout("tcp", peer.String(), 5*time.Second)
 	if err != nil {
 		return nil, err
 	}
 
+	// try to complete handshake with peer
 	_, err = peer.handshake(conn, hash, name)
 	if err != nil {
 		return nil, err
 	}
 
+	// get peer's bitfield
 	b, err := getBitfield(conn)
 	if err != nil {
 		return nil, err

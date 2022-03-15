@@ -13,19 +13,26 @@
 
 package bitfield
 
+// Bitfield represents a single mutable bitfield.
 type Bitfield []byte
 
+// Has checks if the ith bit of the bitfield b is set.
 func (b Bitfield) Has(i int) bool {
 	atByte := i / 8     // 8 pieces per byte
 	byteOffset := i % 8 // offset in byte
 
+	// index is outside of bitfield's range
 	if atByte < 0 || atByte > len(b) {
 		return false
 	}
 
+	// b[atByte]:        get byte with bit i
+	// >>(7-byteOffset): get rid of bits after i
+	// &1:               get rid of bits before i
 	return b[atByte]>>(7-byteOffset)&1 != 0
 }
 
+// Set sets the ith bit of the bitfield b.
 func (b Bitfield) Set(i int) {
 	atByte := i / 8     // 8 pieces per byte
 	byteOffset := i % 8 // offset in byte
@@ -34,5 +41,6 @@ func (b Bitfield) Set(i int) {
 		return
 	}
 
+	// set ith bit
 	b[atByte] |= 1 << (7 - byteOffset)
 }

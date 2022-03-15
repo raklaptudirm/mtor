@@ -32,7 +32,7 @@ func (p Peer) String() string {
 
 // Unmarshal parses peers from a byte array.
 func Unmarshal(buffer []byte) ([]Peer, error) {
-	const peerLen = 6
+	const peerLen = 6 // [4 bytes ip] [2 bytes port]
 
 	length := len(buffer)
 	number := length / peerLen
@@ -43,8 +43,8 @@ func Unmarshal(buffer []byte) ([]Peer, error) {
 	peers := make([]Peer, number)
 	for i := 0; i < number; i++ {
 		offset := i * peerLen
-		peers[i].IP = net.IP(buffer[offset : offset+4])
-		peers[i].Port = binary.BigEndian.Uint16(buffer[offset+4 : offset+6])
+		peers[i].IP = net.IP(buffer[offset : offset+4])                      // get IP
+		peers[i].Port = binary.BigEndian.Uint16(buffer[offset+4 : offset+6]) // get port
 	}
 	return peers, nil
 }

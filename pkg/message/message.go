@@ -19,25 +19,30 @@ import (
 	"io"
 )
 
-type ID byte
+// Type represents the various message types.
+type Type byte
 
+// various message types and their identifiers.
 const (
-	Choke         ID = 0
-	UnChoke       ID = 1
-	Interested    ID = 2
-	NotInterested ID = 3
-	Have          ID = 4
-	Bitfield      ID = 5
-	Request       ID = 6
-	Piece         ID = 7
-	Cancel        ID = 8
+	Choke         Type = 0
+	UnChoke       Type = 1
+	Interested    Type = 2
+	NotInterested Type = 3
+	Have          Type = 4
+	Bitfield      Type = 5
+	Request       Type = 6
+	Piece         Type = 7
+	Cancel        Type = 8
 )
 
+// Message represents a bittorrent p2p message.
 type Message struct {
-	Identifier ID
-	Payload    []byte
+	Identifier Type   // message identifier
+	Payload    []byte // message payload
 }
 
+// Serialize serializes a message into a byte slice.
+// [length] [id] [payload]
 func (m *Message) Serialize() []byte {
 	if m == nil {
 		return make([]byte, 4)
@@ -53,7 +58,9 @@ func (m *Message) Serialize() []byte {
 	return msg
 }
 
+// Read reads a serialized message from a io.Reader.
 func Read(r io.Reader) (*Message, error) {
+	// read length
 	lenBuf := make([]byte, 4) // 4 byte length prefix
 	_, err := io.ReadFull(r, lenBuf)
 	if err != nil {
@@ -61,10 +68,12 @@ func Read(r io.Reader) (*Message, error) {
 	}
 	length := binary.BigEndian.Uint32(lenBuf)
 
+	// keep-alive message
 	if length == 0 {
 		return nil, nil
 	}
 
+	// read id and payload
 	msgBuf := make([]byte, length)
 	_, err = io.ReadFull(r, msgBuf)
 	if err != nil {
@@ -72,14 +81,16 @@ func Read(r io.Reader) (*Message, error) {
 	}
 
 	return &Message{
-		Identifier: ID(msgBuf[0]),
+		Identifier: Type(msgBuf[0]),
 		Payload:    msgBuf[1:],
 	}, nil
 }
 
+// NewRequest formats a request message into a Message value.
 func NewReqest(index, begin, length int) *Message {
 	payload := make([]byte, 12)
 
+	// [index] [begin] [length]
 	binary.BigEndian.PutUint32(payload[0:4], uint32(index))
 	binary.BigEndian.PutUint32(payload[4:8], uint32(begin))
 	binary.BigEndian.PutUint32(payload[8:12], uint32(length))
@@ -90,6 +101,7 @@ func NewReqest(index, begin, length int) *Message {
 	}
 }
 
+// ParseHave parses a Have Message to get the piece index.
 func ParseHave(msg *Message) (int, error) {
 	if msg.Identifier != Have {
 		return 0, fmt.Errorf("expected Have message, received %v", msg.Identifier)
@@ -102,6 +114,7 @@ func ParseHave(msg *Message) (int, error) {
 	return int(binary.BigEndian.Uint32(msg.Payload)), nil
 }
 
+// ParsePiece parses a PieceMessage and puts the payload into the provided buffer.
 func ParsePiece(index int, buf []byte, msg *Message) (int, error) {
 	if msg.Identifier != Piece {
 		return 0, fmt.Errorf("expected Piece message, received %v", msg.Identifier)

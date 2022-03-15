@@ -18,15 +18,19 @@ import (
 	"io"
 )
 
+// ProtocolName is the protocol the client is following.
 const ProtocolName = "BitTorrent protocol"
 
+// Handshake represents an initial handshake message.
 type Handshake struct {
-	Protocol   string
-	Reserved   [8]byte
-	InfoHash   [20]byte
-	Identifier [20]byte
+	Protocol   string   // protocol understood by the sender
+	Reserved   [8]byte  // reserved bits
+	InfoHash   [20]byte // info hash of torrent
+	Identifier [20]byte // identifier of sender
 }
 
+// Serialize serializes the handshake into a byte slice.
+// [length] [protocol] [reserved] [infohash] [id]
 func (h *Handshake) Serialize() []byte {
 	length := byte(len(h.Protocol))
 
@@ -43,6 +47,8 @@ func (h *Handshake) Serialize() []byte {
 	return append(buffer, metadata...)
 }
 
+// Verify verifies the handshake, checking if the protocol and hash values
+// are equal.
 func (h *Handshake) Verify(hash [20]byte) error {
 	switch {
 	case h.Protocol != ProtocolName:
@@ -54,6 +60,8 @@ func (h *Handshake) Verify(hash [20]byte) error {
 	}
 }
 
+// NewHandshake creates a new Handshake value with the provided identifier
+// and infohash.
 func NewHandshake(hash, name [20]byte) *Handshake {
 	return &Handshake{
 		Protocol:   ProtocolName,
@@ -63,7 +71,9 @@ func NewHandshake(hash, name [20]byte) *Handshake {
 	}
 }
 
+// ReadHandshake reads a serialized Handshake from an io.Reader.
 func ReadHandshake(r io.Reader) (*Handshake, error) {
+	// read protocol length
 	lenBuf := make([]byte, 1)
 	_, err := io.ReadFull(r, lenBuf)
 	if err != nil {
@@ -71,6 +81,7 @@ func ReadHandshake(r io.Reader) (*Handshake, error) {
 	}
 	length := lenBuf[0]
 
+	// read protocol name
 	protocolbuf := make([]byte, length)
 	_, err = io.ReadFull(r, protocolbuf)
 	if err != nil {
@@ -78,18 +89,21 @@ func ReadHandshake(r io.Reader) (*Handshake, error) {
 	}
 	protocol := string(protocolbuf)
 
+	// read reserved bytes
 	var reservedBytes [8]byte
 	_, err = io.ReadFull(r, reservedBytes[:])
 	if err != nil {
 		return nil, err
 	}
 
+	// read infohash
 	var hashBytes [20]byte
 	_, err = io.ReadFull(r, hashBytes[:])
 	if err != nil {
 		return nil, err
 	}
 
+	// read identifier
 	var idBytes [20]byte
 	_, err = io.ReadFull(r, idBytes[:])
 	if err != nil {

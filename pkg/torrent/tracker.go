@@ -47,8 +47,10 @@ func (t *Torrent) requestTracker() (*trackerResponse, error) {
 		return nil, err
 	}
 
+	// tracker connection client
 	c := &http.Client{Timeout: 5 * time.Second}
 
+	// get peerlist from tracker
 	res, err := c.Get(url)
 	if err != nil {
 		return nil, err
@@ -56,6 +58,7 @@ func (t *Torrent) requestTracker() (*trackerResponse, error) {
 	defer res.Body.Close()
 
 	var trackerRes trackerResponse
+	// unmarshal bencode response
 	err = bencode.Unmarshal(res.Body, &trackerRes)
 	if err != nil {
 		return nil, err
@@ -66,6 +69,7 @@ func (t *Torrent) requestTracker() (*trackerResponse, error) {
 
 // Peers returns a list of peers to fetch pieces from.
 func (t *Torrent) Peers() ([]peer.Peer, error) {
+	// get response from tracker
 	res, err := t.requestTracker()
 	if err != nil {
 		return nil, err
@@ -76,6 +80,7 @@ func (t *Torrent) Peers() ([]peer.Peer, error) {
 	}
 
 	peerBuf := []byte(res.Peers)
+	// unmarshal compact peerlist
 	return peer.Unmarshal(peerBuf)
 }
 
@@ -86,15 +91,16 @@ func (t *Torrent) Tracker() (string, error) {
 		return "", err
 	}
 
+	// set url params
 	params := url.Values{
-		"info_hash":  []string{string(t.InfoHash[:])},
-		"peer_id":    []string{string(t.Name[:])},
-		"port":       []string{strconv.Itoa(int(t.Port))},
-		"uploaded":   []string{"0"},
-		"downloaded": []string{"0"},
-		"left":       []string{strconv.Itoa(t.Length)},
-		"compact":    []string{"1"},
-		"numwant":    []string{"500"}, // request 500 peers
+		"info_hash":  []string{string(t.InfoHash[:])},     // infohash of torrent
+		"peer_id":    []string{string(t.Name[:])},         // client's peer id
+		"port":       []string{strconv.Itoa(int(t.Port))}, // port client is listening on
+		"uploaded":   []string{"0"},                       // number of bytes uploaded
+		"downloaded": []string{"0"},                       // number of bytes downloaded
+		"left":       []string{strconv.Itoa(t.Length)},    // number of bytes left to download
+		"compact":    []string{"1"},                       // 1 to get peerlist be in compact format
+		"numwant":    []string{"500"},                     // request 500 peers
 	}
 	base.RawQuery = params.Encode()
 

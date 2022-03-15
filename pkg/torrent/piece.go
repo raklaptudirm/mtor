@@ -18,27 +18,34 @@ import (
 	"github.com/raklaptudirm/mtor/pkg/peer"
 )
 
+// Piece represents a piece of a torrent that needs to be downloaded.
 type Piece struct {
-	index  int
-	hash   [20]byte
-	length int
+	index  int      // the index of the piece
+	hash   [20]byte // the hash of the piece
+	length int      // the length of the piece
 }
 
+// PieceResult represents a piece that has been successfully downloaded.
 type PieceResult struct {
-	index int
-	value []byte
+	index int    // the index of the piece
+	value []byte // the value of the piece
 }
 
+// PieceProgress represents the progress made on a piece that is currently
+// being downloaded.
 type PieceProgress struct {
-	index      int
-	buf        []byte
-	conn       *peer.Conn
-	downloaded int
-	requested  int
-	backlog    int
+	index      int        // index of the piece
+	buf        []byte     // buffer to store value of the piece
+	conn       *peer.Conn // connection to download the piece from
+	downloaded int        // number of bytes dowloaded
+	requested  int        // number of bytes requested
+	backlog    int        // backlog of block requests
 }
 
+// ReadMessage reads a message from p's peer connection, and works according
+// to the message.
 func (p *PieceProgress) ReadMessage() error {
+	// read message from connection
 	msg, err := p.conn.Read()
 	if err != nil {
 		return err
@@ -50,10 +57,13 @@ func (p *PieceProgress) ReadMessage() error {
 
 	switch msg.Identifier {
 	case message.Choke:
+		// peer un-choked us
 		p.conn.Choked = true
 	case message.UnChoke:
+		// peer choked us
 		p.conn.Choked = false
 	case message.Have:
+		// peer has a new piece
 		piece, err := message.ParseHave(msg)
 		if err != nil {
 			return err
@@ -61,6 +71,7 @@ func (p *PieceProgress) ReadMessage() error {
 
 		p.conn.Bitfield.Set(piece)
 	case message.Piece:
+		// peer sent a block of data
 		n, err := message.ParsePiece(p.index, p.buf, msg)
 		if err != nil {
 			return err
@@ -73,7 +84,11 @@ func (p *PieceProgress) ReadMessage() error {
 	return nil
 }
 
+// PieceManager represents an interface which can handle the storage of the
+// torrent's pieces.
 type PieceManager interface {
+	// Put stores the buffer data with the provided piece index.
 	Put(int, []byte) error
+	// Get gets the data of the provided piece index.
 	Get(int) ([]byte, error)
 }
