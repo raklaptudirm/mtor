@@ -35,9 +35,15 @@ type download struct {
 	peerNum int          // number of peers connected to
 
 	// config information
-	maxBacklog   int // maximum request backlog
-	maxBlockSize int // maximum data per request in bytes
-	maxPeers     int // number of peers to request
+	config *DownloadConfig
+}
+
+type DownloadConfig struct {
+	Backlog int // number of requests to keep in backlog
+	PeerAmt int // number of peers to request from tracker
+
+	DownTimeout time.Duration // download timeout
+	ConnTimeout time.Duration // connection timeout
 }
 
 // workChan represtents a work channel consisting of pieces which need to be
@@ -90,7 +96,7 @@ func (d *download) putPieces() {
 // them in the state.
 func (d *download) loadPeers() error {
 	// get peers from tracker
-	peers, err := d.torrent.Peers(MaxPeers)
+	peers, err := d.torrent.Peers(d.config.PeerAmt)
 	d.peers = peers
 	return err
 }
@@ -112,8 +118,9 @@ func (d *download) connectToPeer(p peer.Peer) {
 	defer func() { d.peerNum-- }()
 
 	// try to connect to peer
-	conn, err := peer.NewConn(p, d.torrent.InfoHash, d.torrent.Name)
+	conn, err := peer.NewConn(p, d.torrent.InfoHash, d.torrent.Name, d.config.ConnTimeout)
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 	defer conn.Conn.Close()
@@ -132,9 +139,10 @@ func (d *download) connectToPeer(p peer.Peer) {
 		}
 
 		// download piece from peer
-		block, err := downloadBlock(conn, piece)
+		block, err := d.downloadPiece(conn, piece)
 		if err != nil {
 			d.work <- piece
+			fmt.Println(err)
 			return
 		}
 
@@ -153,7 +161,7 @@ func (d *download) connectToPeer(p peer.Peer) {
 }
 
 // downloadBlock downloads a piece from a peer connection.
-func downloadBlock(conn *peer.Conn, p *piece) ([]byte, error) {
+func (d *download) downloadPiece(conn *peer.Conn, p *piece) ([]byte, error) {
 	progress := pieceProgress{
 		index: p.index,
 		buf:   make([]byte, p.length),
@@ -161,13 +169,13 @@ func downloadBlock(conn *peer.Conn, p *piece) ([]byte, error) {
 	}
 
 	// set download deadline
-	conn.Conn.SetDeadline(time.Now().Add(20 * time.Second))
+	conn.Conn.SetDeadline(time.Now().Add(d.config.DownTimeout))
 	defer conn.Conn.SetDeadline(time.Time{}) // disable deadline
 
 	// repeat till number of bytes downloaded is less than total
 	for progress.downloaded < p.length {
 		if !conn.Choked {
-			for progress.backlog < MaxBacklog && progress.requested < p.length {
+			for progress.backlog < d.config.Backlog && progress.requested < p.length {
 				// calculate block size
 				size := MaxBlockSize
 				// last block is of irregular size
@@ -214,29 +222,19 @@ func (t *Torrent) pieceLen(index int) int {
 	return t.PieceLength
 }
 
-var (
-	// MaxBacklog represents the maximum number of requests that can be in backlog.
-	MaxBacklog = 20
-	// MaxBlock size represents the maximum number of bytes that can be requested
-	// at a time.
-	MaxBlockSize = 16384 // 16 kb
-	// MaxPeers represents the number of peers to request from the tracker.
-	MaxPeers = 500
-)
+const MaxBlockSize = 16384 // 16 kb
 
 // Download downloads the t torrent and stores the downloaded pieces into
 // the provided PieceManager.
-func (t *Torrent) Download(p PieceManager) error {
+func (t *Torrent) Download(p PieceManager, c *DownloadConfig) error {
 	start := time.Now()
 
 	download := download{
-		work:         make(workChan, len(t.PieceHashes)),
-		results:      make(resultChan),
-		torrent:      t,
-		manager:      p,
-		maxBacklog:   MaxBacklog,
-		maxBlockSize: MaxBacklog,
-		maxPeers:     MaxPeers,
+		work:    make(workChan, len(t.PieceHashes)),
+		results: make(resultChan),
+		torrent: t,
+		manager: p,
+		config:  c,
 	}
 
 	err := download.start()

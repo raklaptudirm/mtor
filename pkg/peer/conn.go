@@ -30,6 +30,7 @@ type Conn struct {
 	Bitfield bitfield.Bitfield // peer's bitfield
 	InfoHash [20]byte          // torrent infohash
 	Name     [20]byte          // peer's identifier
+	Timeout  time.Duration     // conn's timeout
 }
 
 // Read reads a Message from the Conn.
@@ -59,20 +60,20 @@ func (c *Conn) Request(index, begin, length int) error {
 }
 
 // handshake tries to complete a proper handshake with the peer.
-func (p *Peer) handshake(conn net.Conn, hash, name [20]byte) (*message.Handshake, error) {
+func (c *Conn) handshake(hash, name [20]byte) (*message.Handshake, error) {
 	// set handshake deadline
-	conn.SetDeadline(time.Now().Add(5 * time.Second))
-	defer conn.SetDeadline(time.Time{}) // disable deadline
+	c.Conn.SetDeadline(time.Now().Add(c.Timeout))
+	defer c.Conn.SetDeadline(time.Time{}) // disable deadline
 
 	// send a handshake to the peer
 	req := message.NewHandshake(hash, name)
-	_, err := conn.Write(req.Serialize())
+	_, err := c.Conn.Write(req.Serialize())
 	if err != nil {
 		return nil, err
 	}
 
 	// await a handshake from the peer
-	res, err := message.ReadHandshake(conn)
+	res, err := message.ReadHandshake(c.Conn)
 	if err != nil {
 		return nil, err
 	}
@@ -86,13 +87,13 @@ func (p *Peer) handshake(conn net.Conn, hash, name [20]byte) (*message.Handshake
 }
 
 // getBitfield reads a serialized bitfield from the Conn.
-func getBitfield(conn net.Conn) (bitfield.Bitfield, error) {
+func (c *Conn) getBitfield() (bitfield.Bitfield, error) {
 	// set bitfield deadline
-	conn.SetDeadline(time.Now().Add(5 * time.Second))
-	defer conn.SetDeadline(time.Time{}) // disable deadline
+	c.Conn.SetDeadline(time.Now().Add(c.Timeout))
+	defer c.Conn.SetDeadline(time.Time{}) // disable deadline
 
 	// await message from peer
-	msg, err := message.Read(conn)
+	msg, err := message.Read(c.Conn)
 	if err != nil {
 		return nil, err
 	}
@@ -106,31 +107,34 @@ func getBitfield(conn net.Conn) (bitfield.Bitfield, error) {
 }
 
 // NewConn creates a new p2p Conn with the provided peer.
-func NewConn(peer Peer, hash, name [20]byte) (*Conn, error) {
+func NewConn(peer Peer, hash, name [20]byte, timeout time.Duration) (*Conn, error) {
 	// dial a tcp connection with peer
-	conn, err := net.DialTimeout("tcp", peer.String(), 5*time.Second)
+	netConn, err := net.DialTimeout("tcp", peer.String(), timeout)
 	if err != nil {
 		return nil, err
 	}
 
+	conn := &Conn{
+		Conn:     netConn,
+		Choked:   true,
+		Peer:     peer,
+		InfoHash: hash,
+		Name:     name,
+		Timeout:  timeout,
+	}
+
 	// try to complete handshake with peer
-	_, err = peer.handshake(conn, hash, name)
+	_, err = conn.handshake(hash, name)
 	if err != nil {
 		return nil, err
 	}
 
 	// get peer's bitfield
-	b, err := getBitfield(conn)
+	b, err := conn.getBitfield()
 	if err != nil {
 		return nil, err
 	}
+	conn.Bitfield = b
 
-	return &Conn{
-		Conn:     conn,
-		Choked:   true,
-		Peer:     peer,
-		Bitfield: b,
-		InfoHash: hash,
-		Name:     name,
-	}, nil
+	return conn, nil
 }
