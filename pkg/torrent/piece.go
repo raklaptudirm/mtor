@@ -18,22 +18,22 @@ import (
 	"github.com/raklaptudirm/mtor/pkg/peer"
 )
 
-// Piece represents a piece of a torrent that needs to be downloaded.
-type Piece struct {
+// piece represents a piece of a torrent that needs to be downloaded.
+type piece struct {
 	index  int      // the index of the piece
 	hash   [20]byte // the hash of the piece
 	length int      // the length of the piece
 }
 
-// PieceResult represents a piece that has been successfully downloaded.
-type PieceResult struct {
+// pieceResult represents a piece that has been successfully downloaded.
+type pieceResult struct {
 	index int    // the index of the piece
 	value []byte // the value of the piece
 }
 
 // PieceProgress represents the progress made on a piece that is currently
 // being downloaded.
-type PieceProgress struct {
+type pieceProgress struct {
 	index      int        // index of the piece
 	buf        []byte     // buffer to store value of the piece
 	conn       *peer.Conn // connection to download the piece from
@@ -42,9 +42,9 @@ type PieceProgress struct {
 	backlog    int        // backlog of block requests
 }
 
-// ReadMessage reads a message from p's peer connection, and works according
+// readMessage reads a message from p's peer connection, and works according
 // to the message.
-func (p *PieceProgress) ReadMessage() error {
+func (p *pieceProgress) readMessage() error {
 	// read message from connection
 	msg, err := p.conn.Read()
 	if err != nil {

@@ -14,11 +14,13 @@
 package torrent
 
 import (
-	"crypto/rand"
-	"crypto/sha1"
-	"fmt"
+	"errors"
+	"net/http"
+	"net/url"
+	"strconv"
 	"time"
 
+	"github.com/jackpal/bencode-go"
 	"github.com/raklaptudirm/mtor/pkg/peer"
 )
 
@@ -36,170 +38,91 @@ type Torrent struct {
 	Port uint16   // port the client is listening on
 }
 
-// startClient tries to connect to the peer p, and if successful, downloads
-// the torrent pieces from that peer.
-func (t *Torrent) startClient(p peer.Peer, w chan *Piece, r chan *PieceResult) {
-	// try to connect to peer
-	conn, err := peer.NewConn(p, t.InfoHash, t.Name)
+// Peers returns a list of peers to fetch pieces from.
+func (t *Torrent) Peers(n int) ([]peer.Peer, error) {
+	// get response from tracker
+	res, err := t.requestTracker(n)
 	if err != nil {
-		return
+		return nil, err
 	}
-	defer conn.Conn.Close()
 
-	conn.UnChoke() // un-choke peer
-	conn.Interested()
-
-	fmt.Printf("mtor: connected to peer %s\n", p)
-
-	// get pieces from work channel
-	for piece := range w {
-		// check if peer has piece
-		if !conn.Bitfield.Has(piece.index) {
-			w <- piece
-			continue
-		}
-
-		// download piece from peer
-		block, err := downloadBlock(conn, piece)
-		if err != nil {
-			w <- piece
-			return
-		}
-
-		// check the integrity of downloaded piece
-		if !checkIntegrity(piece, block) {
-			w <- piece
-			continue
-		}
-
-		// send downloaded piece to results channel
-		r <- &PieceResult{
-			index: piece.index,
-			value: block,
-		}
+	// check for failure message
+	if res.Failure != "" {
+		return nil, errors.New(res.Failure)
 	}
+
+	peerBuf := []byte(res.Peers)
+	// unmarshal compact peerlist
+	return peer.Unmarshal(peerBuf)
 }
 
-const (
-	// MaxBacklog represents the maximum number of requests that can be in backlog.
-	MaxBacklog = 20
-	// MaxBlock size represents the maximum number of bytes that can be requested
-	// at a time.
-	MaxBlockSize = 16384 // 16 kb
-)
-
-// downloadBlock downloads a piece from a peer connection.
-func downloadBlock(conn *peer.Conn, p *Piece) ([]byte, error) {
-	progress := PieceProgress{
-		index: p.index,
-		buf:   make([]byte, p.length),
-		conn:  conn,
-	}
-
-	// set download deadline
-	conn.Conn.SetDeadline(time.Now().Add(20 * time.Second))
-	defer conn.Conn.SetDeadline(time.Time{}) // disable deadline
-
-	// repeat till number of bytes downloaded is less than total
-	for progress.downloaded < p.length {
-		if !conn.Choked {
-			for progress.backlog < MaxBacklog && progress.requested < p.length {
-				// calculate block size
-				size := MaxBlockSize
-				// last block is of irregular size
-				if p.length-progress.requested < size {
-					size = p.length - progress.requested
-				}
-
-				// request block
-				err := conn.Request(p.index, progress.requested, size)
-				if err != nil {
-					return nil, err
-				}
-				progress.backlog++
-				progress.requested += size
-			}
-		}
-
-		err := progress.ReadMessage()
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return progress.buf, nil
-}
-
-// checkIntegrity checks if the dowloaded piece's hash matches the expected
-// hash.
-func checkIntegrity(p *Piece, block []byte) bool {
-	hash := sha1.Sum(block)
-	return p.hash == hash
-}
-
-// Download downloads the t torrent and stores the downloaded pieces into
-// the provided PieceManager.
-func (t *Torrent) Download(p PieceManager) error {
-	start := time.Now()
-
-	length := len(t.PieceHashes)
-
-	// get peers from tracker
-	peers, err := t.Peers()
+// Tracker returns the url of t's tracker, along with parameters.
+func (t *Torrent) Tracker(n int, c bool) (string, error) {
+	base, err := url.Parse(t.Announce)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	pieces := make(chan *Piece, length) // create work channel
-	result := make(chan *PieceResult)   // create result channel
-	// send pieces into work channel
-	for index, hash := range t.PieceHashes {
-		pieces <- &Piece{
-			index:  index,
-			hash:   hash,
-			length: t.pieceLen(index),
-		}
+	compact := 0 // non-compact peerlist
+	if c {
+		compact = 1 // compact peer list
 	}
 
-	// start peer connections (maybe do this first?)
-	for _, peer := range peers {
-		go t.startClient(peer, pieces, result)
+	// set url params
+	params := url.Values{
+		"info_hash":  []string{string(t.InfoHash[:])},     // infohash of torrent
+		"peer_id":    []string{string(t.Name[:])},         // client's peer id
+		"port":       []string{strconv.Itoa(int(t.Port))}, // port client is listening on
+		"uploaded":   []string{"0"},                       // number of bytes uploaded
+		"downloaded": []string{"0"},                       // number of bytes downloaded
+		"left":       []string{strconv.Itoa(t.Length)},    // number of bytes left to download
+		"compact":    []string{strconv.Itoa(compact)},     // 1 to get peerlist be in compact format
+		"numwant":    []string{strconv.Itoa(n)},           // number of peers wanted
 	}
+	base.RawQuery = params.Encode()
 
-	completed := 0
-	for completed < length {
-		res := <-result
-		fmt.Printf("mtor: downloaded piece %v\n", res.index)
-		p.Put(res.index, res.value)
-		completed++
-	}
-	close(pieces)
-
-	duration := time.Since(start)
-	fmt.Println("mtor: download complete")
-	fmt.Printf("mtor: %s taken", duration)
-
-	return nil
+	return base.String(), nil
 }
 
-// pieceLen calculates the length of the piece with the provided index.
-func (t *Torrent) pieceLen(index int) int {
-	begin := index * t.PieceLength // beginning of piece
-	end := begin + t.PieceLength   // end of piece
+// trackerResponse represents a response from the tracker.
+type trackerResponse struct {
+	Failure string `bencode:"failure reason"`  // failure message
+	Warning string `bencode:"warning message"` // warning message
 
-	// last piece is irregular in length
-	if end > t.Length {
-		return t.Length - begin
-	}
+	Interval   int `bencode:"interval"`     // interval to reconnect after
+	MinIntrval int `bencode:"min interval"` // minimum interval to reconnect after
 
-	// not last piece, default length
-	return t.PieceLength
+	TrackerID string `bencode:"tracker id"` // id of the tracker
+
+	CompletePeers   int `bencode:"complete"`   // number of peers with complete pieces
+	IncompletePeers int `bencode:"incomplete"` // number of peers with incomplete pieces
+
+	Peers string `bencode:"peers"` // compact peer ips and ports
 }
 
-// Identifier generates a random client identifier for use.
-func Identifier() [20]byte {
-	var id [20]byte
-	rand.Read(id[:])
+// requestTracker requests to t's tracker and returns the parsed response.
+func (t *Torrent) requestTracker(n int) (*trackerResponse, error) {
+	url, err := t.Tracker(n, true)
+	if err != nil {
+		return nil, err
+	}
 
-	return id
+	// tracker connection client
+	c := &http.Client{Timeout: 5 * time.Second}
+
+	// get peerlist from tracker
+	res, err := c.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	var trackerRes trackerResponse
+	// unmarshal bencode response
+	err = bencode.Unmarshal(res.Body, &trackerRes)
+	if err != nil {
+		return nil, err
+	}
+
+	return &trackerRes, nil
 }
