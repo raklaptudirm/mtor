@@ -26,18 +26,18 @@ import (
 // Port is the port the client is listening on.
 const Port = 6881
 
-// File represents a .torrent metainfo file.
-type File struct {
-	Info     TorrentInfo `bencode:"info"`     // info section of metainfo
-	Announce string      `bencode:"announce"` // tracker announce url
+// file represents a .torrent metainfo file.
+type file struct {
+	Info     info   `bencode:"info"`     // info section of metainfo
+	Announce string `bencode:"announce"` // tracker announce url
 
 	Date    int64  `bencode:"creation date"` // creation timestamp
 	Comment string `bencode:"comment"`       // free-form comment
 	Author  string `bencode:"created by"`    // author of the metainfo
 }
 
-// TorrentInfo represents the info section of a metainfo file.
-type TorrentInfo struct {
+// info represents the info section of a metainfo file.
+type info struct {
 	PieceLen int    `bencode:"piece length"` // length of each piece
 	Pieces   string `bencode:"pieces"`       // hash of each piece
 	Name     string `bencode:"name"`         // name of file
@@ -46,8 +46,8 @@ type TorrentInfo struct {
 }
 
 // Open opens a io.Reader as a .torrent metainfo file.
-func Open(r io.Reader) (*File, error) {
-	var f File
+func Open(r io.Reader) (*file, error) {
+	var f file
 
 	err := bencode.Unmarshal(r, &f)
 	if err != nil {
@@ -57,8 +57,8 @@ func Open(r io.Reader) (*File, error) {
 	return &f, nil
 }
 
-// Torrent converts a File into a torrent.Torrent.
-func (f *File) Torrent() (*torrent.Torrent, error) {
+// Torrent converts a file into a torrent.Torrent.
+func (f *file) Torrent() (*torrent.Torrent, error) {
 	hash, err := f.Info.hash()
 	if err != nil {
 		return nil, err
@@ -80,8 +80,8 @@ func (f *File) Torrent() (*torrent.Torrent, error) {
 	}, nil
 }
 
-// hash calculates the infohash of TorrentInfo.
-func (i *TorrentInfo) hash() ([20]byte, error) {
+// hash calculates the infohash of info.
+func (i *info) hash() ([20]byte, error) {
 	var buf bytes.Buffer
 	err := bencode.Marshal(&buf, *i)
 	if err != nil {
@@ -92,8 +92,8 @@ func (i *TorrentInfo) hash() ([20]byte, error) {
 }
 
 // hashes returns an array containing the hash of each piece in the
-// TorrentInfo.
-func (i *TorrentInfo) hashes() ([][20]byte, error) {
+// info.
+func (i *info) hashes() ([][20]byte, error) {
 	buffer := []byte(i.Pieces)
 	length := len(buffer)
 	if length%20 != 0 {
