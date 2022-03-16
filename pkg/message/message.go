@@ -19,25 +19,25 @@ import (
 	"io"
 )
 
-// Type represents the various message types.
-type Type byte
+// id represents the various message types.
+type id byte
 
 // various message types and their identifiers.
 const (
-	Choke         Type = 0
-	UnChoke       Type = 1
-	Interested    Type = 2
-	NotInterested Type = 3
-	Have          Type = 4
-	Bitfield      Type = 5
-	Request       Type = 6
-	Piece         Type = 7
-	Cancel        Type = 8
+	Choke         id = 0
+	UnChoke       id = 1
+	Interested    id = 2
+	NotInterested id = 3
+	Have          id = 4
+	Bitfield      id = 5
+	Request       id = 6
+	Piece         id = 7
+	Cancel        id = 8
 )
 
 // Message represents a bittorrent p2p message.
 type Message struct {
-	Identifier Type   // message identifier
+	Identifier id     // message identifier
 	Payload    []byte // message payload
 }
 
@@ -81,7 +81,7 @@ func Read(r io.Reader) (*Message, error) {
 	}
 
 	return &Message{
-		Identifier: Type(msgBuf[0]),
+		Identifier: id(msgBuf[0]),
 		Payload:    msgBuf[1:],
 	}, nil
 }
