@@ -18,6 +18,7 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"io"
+	"math/rand"
 
 	"github.com/jackpal/bencode-go"
 	"github.com/raklaptudirm/mtor/pkg/torrent"
@@ -38,23 +39,23 @@ type file struct {
 
 // info represents the info section of a metainfo file.
 type info struct {
+	// common fields
 	PieceLen int    `bencode:"piece length"` // length of each piece
 	Pieces   string `bencode:"pieces"`       // hash of each piece
-	Name     string `bencode:"name"`         // name of file
-	Length   int    `bencode:"length"`       // length of file
-	// TODO: add multi-file support
+	// file name in single-file torrent, directory name in multi-file torrent
+	Name string `bencode:"name"`
+
+	// single-file only
+	Length int `bencode:"length"` // length of file in single-file torrent
+
+	// multi-file only
+	Files []singleFile `bencode:"files"` // files in multi-file torrent
 }
 
-// Open opens a io.Reader as a .torrent metainfo file.
-func Open(r io.Reader) (*file, error) {
-	var f file
-
-	err := bencode.Unmarshal(r, &f)
-	if err != nil {
-		return nil, err
-	}
-
-	return &f, nil
+// file represtents a single file in multi-file torrent.
+type singleFile struct {
+	Length int      `bencode:"length"` // length of the file
+	Path   []string `bencode:"path"`   // path of the file
 }
 
 // Torrent converts a file into a torrent.Torrent.
@@ -69,14 +70,18 @@ func (f *file) Torrent() (*torrent.Torrent, error) {
 		return nil, err
 	}
 
+	// generate random user id
+	var id [20]byte
+	rand.Read(id[:])
+
 	return &torrent.Torrent{
 		Announce:    f.Announce,
 		InfoHash:    hash,
 		PieceHashes: hashes,
 		PieceLength: f.Info.PieceLen,
-		Length:      f.Info.Length,
+		Length:      f.length(),
 		Port:        Port,
-		Name:        torrent.Identifier(),
+		Name:        id,
 	}, nil
 }
 
@@ -107,4 +112,33 @@ func (i *info) hashes() ([][20]byte, error) {
 		copy(hashes[i][:], buffer[i*20:(i+1)*20])
 	}
 	return hashes, nil
+}
+
+func (f *file) length() int {
+	if f.isSingleFile() {
+		return f.Info.Length
+	}
+
+	length := 0
+	for _, file := range f.Info.Files {
+		length += file.Length
+	}
+
+	return length
+}
+
+func (f *file) isSingleFile() bool {
+	return len(f.Info.Files) == 0
+}
+
+// Open opens a io.Reader as a .torrent metainfo file.
+func Open(r io.Reader) (*file, error) {
+	var f file
+
+	err := bencode.Unmarshal(r, &f)
+	if err != nil {
+		return nil, err
+	}
+
+	return &f, nil
 }

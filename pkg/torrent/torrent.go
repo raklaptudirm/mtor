@@ -14,7 +14,6 @@
 package torrent
 
 import (
-	"crypto/rand"
 	"errors"
 	"net/http"
 	"net/url"
@@ -126,12 +125,4 @@ func (t *Torrent) requestTracker(n int) (*trackerResponse, error) {
 	}
 
 	return &trackerRes, nil
-}
-
-// Identifier generates a random client identifier for use.
-func Identifier() [20]byte {
-	var id [20]byte
-	rand.Read(id[:])
-
-	return id
 }
