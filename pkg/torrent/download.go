@@ -14,8 +14,8 @@
 package torrent
 
 import (
-	"crypto/rand"
 	"crypto/sha1"
+	"errors"
 	"fmt"
 	"time"
 
@@ -25,8 +25,10 @@ import (
 // download represents the state of a torrent thats being downloaded.
 type download struct {
 	// communication channels
-	work    workChan   // work channel
-	results resultChan // results channel
+	work   workChan   // work channel
+	pieces pieceChan  // pieces channel
+	death  deathChan  // death channel
+	result resultChan // result channel
 
 	// state information
 	torrent *Torrent     // the torrent being downloaded
@@ -50,13 +52,32 @@ type DownloadConfig struct {
 // downloaded.
 type workChan chan *piece
 
-// resultChan represents a result channel consisting of pieces that have
+// pieceChan represents a piece channel consisting of pieces that have
 // been downloaded.
-type resultChan chan *pieceResult
+type pieceChan chan *pieceResult
+
+// deathChan represents the channel where dead workers report their death.
+type deathChan chan *peer.Peer
+
+// resultChan represents the channel from which the main goroutine receives
+// the results of the download.
+type resultChan chan result
+
+// result represents a result of the download.
+type result int
+
+const (
+	resultDownloadComplete result = iota // download successful
+	resultAllWorkersDead                 // all workers died
+)
+
+var ErrWorkersDead = errors.New("download: all workers are dead")
+
+const MaxBlockSize = 16384 // 16 kb
 
 // start starts downloading the provided download
 func (d *download) start() error {
-	length := cap(d.work)
+	d.init() // initialize channels
 
 	// get peers
 	err := d.loadPeers()
@@ -64,32 +85,34 @@ func (d *download) start() error {
 		return err
 	}
 
-	// start connections with peers
-	go d.startConns()
+	go d.checkWorkers() // check if workers are working
+	go d.managePieces() // manage the downloaded pieces
+	go d.scheduleWork() // schedule pieces to download
+	go d.startWorkers() // start workers with peers
 
-	// send pieces into work channel
-	go d.putPieces()
-
-	for done := 0; done < length; done++ {
-		res := <-d.results
-		fmt.Printf("mtor: downloaded piece %v, %v peers\n", res.index, d.peerNum)
-		d.manager.Put(res.index, res.value)
+	switch <-d.result {
+	case resultDownloadComplete: // download complete
+		err = nil
+	case resultAllWorkersDead: // all workers are dead
+		err = ErrWorkersDead
+	default: // unreachable
+		panic("fatal: unknown download result")
 	}
-	// all pieces downloaded
-	close(d.work)
 
-	return nil
+	// result has been reported
+	close(d.result)
+
+	return err
 }
 
-// putPieces starts putting the torrent pieces in the work channel.
-func (d *download) putPieces() {
-	for index, hash := range d.torrent.PieceHashes {
-		d.work <- &piece{
-			index:  index,
-			hash:   hash,
-			length: d.torrent.pieceLen(index),
-		}
-	}
+// init initializes the channels in the provided download.
+func (d *download) init() {
+	pieceNum := len(d.torrent.PieceHashes)
+
+	d.work = make(workChan, pieceNum)
+	d.pieces = make(pieceChan, pieceNum)
+	d.death = make(deathChan)
+	d.result = make(resultChan)
 }
 
 // loadPeers fetches the peers of the torrent being downloaded, and puts
@@ -101,8 +124,51 @@ func (d *download) loadPeers() error {
 	return err
 }
 
-// startConns starts connections with the peers in the state.
-func (d *download) startConns() error {
+// checkWorkers manages the lifetime of the workers, and checks if all the
+// workers are dead or not.
+func (d *download) checkWorkers() {
+	for range d.death {
+		d.peerNum--
+
+		if d.peerNum == 0 {
+			d.result <- resultAllWorkersDead
+			close(d.death) // no death left to report
+			return
+		}
+	}
+}
+
+// managePieces manages the downloaded pieces from the piece channel.
+func (d *download) managePieces() {
+	length := cap(d.work)
+	for done := 0; done < length; done++ {
+		piece := <-d.pieces
+		fmt.Printf("mtor: downloaded piece %v, %v peers\n", piece.index, d.peerNum)
+		d.manager.Put(piece.index, piece.value)
+	}
+
+	close(d.work)   // no work left to schedule
+	close(d.pieces) // no pieces left to download
+
+	// all pieces downloaded
+	d.result <- resultDownloadComplete
+}
+
+// scheduleWork starts putting the torrent pieces in the work channel.
+func (d *download) scheduleWork() {
+	for index, hash := range d.torrent.PieceHashes {
+		d.work <- &piece{
+			index:  index,
+			hash:   hash,
+			length: d.torrent.pieceLen(index),
+		}
+	}
+}
+
+// startWorkers starts connections with the peers in the state.
+func (d *download) startWorkers() error {
+	d.peerNum = len(d.peers)
+
 	// start peer connections
 	for _, peer := range d.peers {
 		go d.connectToPeer(peer)
@@ -114,8 +180,9 @@ func (d *download) startConns() error {
 // connectToPeer tries to connect to the peer p, and if successful, downloads
 // the torrent pieces from that peer.
 func (d *download) connectToPeer(p peer.Peer) {
-	d.peerNum++
-	defer func() { d.peerNum-- }()
+	defer func() {
+		d.death <- &p // report death
+	}()
 
 	// try to connect to peer
 	conn, err := peer.NewConn(p, d.torrent.InfoHash, d.torrent.Name, d.config.ConnTimeout)
@@ -152,8 +219,8 @@ func (d *download) connectToPeer(p peer.Peer) {
 			continue
 		}
 
-		// send downloaded piece to results channel
-		d.results <- &pieceResult{
+		// send downloaded piece to pieces channel
+		d.pieces <- &pieceResult{
 			index: piece.index,
 			value: block,
 		}
@@ -222,22 +289,12 @@ func (t *Torrent) pieceLen(index int) int {
 	return t.PieceLength
 }
 
-const MaxBlockSize = 16384 // 16 kb
-
 // Download downloads the t torrent and stores the downloaded pieces into
 // the provided PieceManager.
 func (t *Torrent) Download(p PieceManager, c *DownloadConfig) error {
 	start := time.Now()
 
-	download := download{
-		work:    make(workChan, len(t.PieceHashes)),
-		results: make(resultChan),
-		torrent: t,
-		manager: p,
-		config:  c,
-	}
-
-	err := download.start()
+	err := t.newDownload(p, c).start()
 	if err != nil {
 		return err
 	}
@@ -249,10 +306,10 @@ func (t *Torrent) Download(p PieceManager, c *DownloadConfig) error {
 	return nil
 }
 
-// Identifier generates a random client identifier for use.
-func Identifier() [20]byte {
-	var id [20]byte
-	rand.Read(id[:])
-
-	return id
+func (t *Torrent) newDownload(p PieceManager, c *DownloadConfig) *download {
+	return &download{
+		torrent: t,
+		manager: p,
+		config:  c,
+	}
 }
