@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"time"
 
 	"github.com/jackpal/bencode-go"
 	"github.com/raklaptudirm/mtor/pkg/torrent"
@@ -72,6 +73,7 @@ func (f *file) Torrent() (*torrent.Torrent, error) {
 
 	// generate random user id
 	var id [20]byte
+	rand.Seed(time.Now().Unix())
 	rand.Read(id[:])
 
 	return &torrent.Torrent{
