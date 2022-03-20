@@ -1,7 +1,7 @@
 # The Mtor Torrent Downloader
 
-Mtor is a simple torrent downloader. It currently only supports single
-file torrents, http trackers, and .torrent metainfo files for download.
+![logo](https://user-images.githubusercontent.com/68542775/159016981-a16fb54b-706e-47d4-b469-501ed03527e0.png)
+
 
 ### Installation
 
