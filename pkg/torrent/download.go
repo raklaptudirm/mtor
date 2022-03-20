@@ -286,9 +286,9 @@ func (t *Torrent) pieceLen(index int) int {
 	return t.PieceLength
 }
 
-// Download downloads the t torrent and stores the downloaded pieces into
-// the provided PieceManager.
-func (t *Torrent) Download(p PieceManager, c *DownloadConfig) error {
+// DownloadPieces downloads the pieces of the provided torrent and stores
+// them into the provided PieceManager.
+func (t *Torrent) DownloadPieces(p PieceManager, c *DownloadConfig) error {
 	start := time.Now()
 
 	err := t.newDownload(p, c).start()

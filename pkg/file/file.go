@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"os"
+	"path"
 	"time"
 
 	"github.com/jackpal/bencode-go"
@@ -57,6 +59,44 @@ type info struct {
 type singleFile struct {
 	Length int      `bencode:"length"` // length of the file
 	Path   []string `bencode:"path"`   // path of the file
+}
+
+// Save saves the torrent as a file or directory, fetching pieces from the
+// provided piece manager.
+func (f *file) Save(pieces torrent.PieceManager, dst string) error {
+	if f.isSingleFile() {
+		return f.saveSingleFile(pieces, dst)
+	}
+
+	// TODO: add support for saving multifile torrents
+	return nil
+}
+
+// saveSingleFile saves a single-file torrent as a file, fetching the pieces
+// from the provided piece manager.
+func (f *file) saveSingleFile(pieces torrent.PieceManager, dst string) error {
+	length := len(f.Info.Pieces) / 20 // each hash is 20 bytes
+
+	file, err := os.Create(path.Join(dst, f.Info.Name))
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	// get each piece
+	for i := 0; i < length; i++ {
+		piece, err := pieces.Get(i)
+		if err != nil {
+			return err
+		}
+
+		// write each piece to the file
+		_, err = file.Write(piece)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Torrent converts a file into a torrent.Torrent.

@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/raklaptudirm/mtor/internal/build"
 	"github.com/raklaptudirm/mtor/pkg/file"
 	"github.com/raklaptudirm/mtor/pkg/torrent"
 )
@@ -43,51 +44,22 @@ func main() {
 
 	fmt.Printf("torrent %x - %d pieces\n", t.InfoHash, len(t.PieceHashes))
 
-	ps := Pieces{
-		size:   t.PieceLength,
-		buffer: make([]byte, t.Length),
+	ps := build.PieceManager
+	err = ps.Init()
+	if err != nil {
+		fmt.Println(err)
 	}
-	err = t.Download(&ps, config)
+	defer ps.Close()
+
+	err = t.DownloadPieces(ps, config)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	w, err := os.Create(string(f.Info.Name))
+	err = f.Save(ps, ".") // save in cwd
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	defer w.Close()
-
-	for i := range t.PieceHashes {
-		block, err := ps.Get(i)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-
-		_, err = w.Write(block)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-	}
-}
-
-// structure to put stuff together
-type Pieces struct {
-	size   int
-	length int
-	buffer []byte
-}
-
-func (p *Pieces) Put(index int, block []byte) error {
-	p.length++
-	copy(p.buffer[index*p.size:], block)
-	return nil
-}
-
-func (p *Pieces) Get(index int) ([]byte, error) {
-	return p.buffer[index*p.size : (index+1)*p.size], nil
 }

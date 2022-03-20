@@ -87,8 +87,12 @@ func (p *pieceProgress) readMessage() error {
 // PieceManager represents an interface which can handle the storage of the
 // torrent's pieces.
 type PieceManager interface {
+	// Init initializes the manager to start storing pieces.
+	Init() error
 	// Put stores the buffer data with the provided piece index.
 	Put(int, []byte) error
 	// Get gets the data of the provided piece index.
 	Get(int) ([]byte, error)
+	// Close destroy's the manager's data. Call this when done.
+	Close() error
 }
