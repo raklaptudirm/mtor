@@ -99,9 +99,6 @@ func (d *download) start() error {
 		panic("fatal: unknown download result")
 	}
 
-	// result has been reported
-	close(d.result)
-
 	return err
 }
 
