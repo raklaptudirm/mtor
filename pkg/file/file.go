@@ -95,7 +95,21 @@ func (i *info) hash() ([20]byte, error) {
 		return [20]byte{}, err
 	}
 
-	return sha1.Sum(buf.Bytes()), nil
+	// this is really bad code, fix the bad code
+	// TODO: bad hack, remove as soon as possible
+	b := removeExcess(buf.Bytes())
+	return sha1.Sum(b), nil
+}
+
+// remove excess removes the files key from the bencode for single file
+// torrents.
+func removeExcess(buf []byte) []byte {
+	res := make([]byte, len(buf)-9)
+
+	// literally remove the files field
+	copy(res, buf[:1])
+	copy(res[1:], buf[10:])
+	return res
 }
 
 // hashes returns an array containing the hash of each piece in the
