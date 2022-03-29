@@ -12,6 +12,14 @@ go build ./cmd/mtor
 ./mtor [torrent file] # put this file in your path
 ```
 
+### Roadmap
+
+```py
+# Implement a custom bencode parser for better usage.
+# Add support for multi-file torrent storage.
+# Sit down and actually think about the struct names.
+```
+
 ### License
 
 Mtor is licensed under the [Apache License, Version 2.0](https://opensource.org/licenses/Apache-2.0).
