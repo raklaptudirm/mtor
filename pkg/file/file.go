@@ -68,8 +68,7 @@ func (f *file) Save(pieces torrent.PieceManager, dst string) error {
 		return f.saveSingleFile(pieces, dst)
 	}
 
-	// TODO: add support for saving multifile torrents
-	return nil
+	return f.saveMultiFile(pieces, dst)
 }
 
 // saveSingleFile saves a single-file torrent as a file, fetching the pieces
@@ -96,6 +95,90 @@ func (f *file) saveSingleFile(pieces torrent.PieceManager, dst string) error {
 			return err
 		}
 	}
+	return nil
+}
+
+func (f *file) saveMultiFile(pieces torrent.PieceManager, dst string) error {
+	fileIndex, left := 0, 0
+
+	var file *os.File
+	defer file.Close()
+
+	var err error
+
+	// nextFile closes the current file and opens the next file
+	nextFile := func() error {
+		if file != nil {
+			// close the current file
+			file.Close()
+		}
+
+		fileinfo := f.Info.Files[fileIndex]
+		filepath := []string{dst}
+		filepath = append(filepath, fileinfo.Path...)
+
+		// create new file
+		file, err = os.Create(path.Join(filepath...))
+		if err != nil {
+			return err
+		}
+
+		fileIndex++
+		left = fileinfo.Length
+		return nil
+	}
+
+	// open the first file
+	err = nextFile()
+	if err != nil {
+		return err
+	}
+
+	pieceNum := len(f.Info.Pieces) / 20
+
+pieceLoop:
+	// loop through all the pieces
+	for i := 0; i < pieceNum; i++ {
+
+		// get next piece
+		piece, err := pieces.Get(i)
+		if err != nil {
+			return err
+		}
+		consumed := 0
+
+		// repeat until whole piece is consumed
+		for {
+			piece = piece[consumed:]
+			length := len(piece)
+
+			switch {
+			// current file will consume whole piece
+			case left >= length:
+				_, err := file.Write(piece)
+				if err != nil {
+					return err
+				}
+
+				left -= length
+				continue pieceLoop
+
+			// current file finished
+			case left == 0:
+				err := nextFile()
+				if err != nil {
+					return err
+				}
+
+			// current file will consume a part of the piece
+			case left < length:
+				file.Write(piece[:left])
+				consumed += left
+				left = 0
+			}
+		}
+	}
+
 	return nil
 }
 
