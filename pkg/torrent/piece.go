@@ -14,8 +14,8 @@
 package torrent
 
 import (
-	"github.com/raklaptudirm/mtor/pkg/message"
-	"github.com/raklaptudirm/mtor/pkg/peer"
+	"laptudirm.com/x/mtor/pkg/message"
+	"laptudirm.com/x/mtor/pkg/peer"
 )
 
 // piece represents a piece of a torrent that needs to be downloaded.

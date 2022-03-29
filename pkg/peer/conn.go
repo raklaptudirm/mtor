@@ -18,8 +18,8 @@ import (
 	"net"
 	"time"
 
-	"github.com/raklaptudirm/mtor/pkg/bitfield"
-	"github.com/raklaptudirm/mtor/pkg/message"
+	"laptudirm.com/x/mtor/pkg/bitfield"
+	"laptudirm.com/x/mtor/pkg/message"
 )
 
 // Conn represents a p2p connection to a peer.

@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/raklaptudirm/mtor/pkg/peer"
+	"laptudirm.com/x/mtor/pkg/peer"
 )
 
 // download represents the state of a torrent thats being downloaded.

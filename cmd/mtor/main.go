@@ -5,9 +5,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/raklaptudirm/mtor/internal/build"
-	"github.com/raklaptudirm/mtor/pkg/file"
-	"github.com/raklaptudirm/mtor/pkg/torrent"
+	"laptudirm.com/x/mtor/internal/build"
+	"laptudirm.com/x/mtor/pkg/file"
+	"laptudirm.com/x/mtor/pkg/torrent"
 )
 
 func main() {

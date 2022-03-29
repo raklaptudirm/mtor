@@ -1,5 +1,5 @@
 package build
 
-import "github.com/raklaptudirm/mtor/internal/manager"
+import "laptudirm.com/x/mtor/internal/manager"
 
 var PieceManager = manager.New()

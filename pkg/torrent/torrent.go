@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/jackpal/bencode-go"
-	"github.com/raklaptudirm/mtor/pkg/peer"
+	"laptudirm.com/x/mtor/pkg/peer"
 )
 
 // Torrent represents the data required to fetch peers and download a torrent

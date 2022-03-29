@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/jackpal/bencode-go"
-	"github.com/raklaptudirm/mtor/pkg/torrent"
+	"laptudirm.com/x/mtor/pkg/torrent"
 )
 
 // Port is the port the client is listening on.
