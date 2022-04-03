@@ -19,11 +19,11 @@ var tests = []struct {
 	{in: "i0e", ptr: new(int), out: 0},
 	{in: "0:", ptr: new(string), out: ""},
 	{in: "3:cat", ptr: new(string), out: "cat"},
-	{in: "le", ptr: new([]any), out: *new([]any)},
-	{in: "li123e3:cate", ptr: new([]any), out: []any{int64(123), "cat"}},
-	{in: "lli123e3:catee", ptr: new([][]any), out: [][]any{{int64(123), "cat"}}},
-	{in: "de", ptr: new(map[string]any), out: make(map[string]any)},
-	{in: "d3:cati123e3:dogi-123ee", ptr: new(map[string]any), out: map[string]any{"cat": int64(123), "dog": int64(-123)}},
+	{in: "le", ptr: new(any), out: *new([]any)},
+	{in: "li123e3:cate", ptr: new(any), out: []any{int64(123), "cat"}},
+	{in: "lli123e3:catee", ptr: new(any), out: []any{[]any{int64(123), "cat"}}},
+	{in: "de", ptr: new(any), out: map[string]any{}},
+	{in: "d3:cati123e3:dogi-123ee", ptr: new(any), out: map[string]any{"cat": int64(123), "dog": int64(-123)}},
 	{in: "d1:ad1:ai123e1:b3:catee", ptr: new(any), out: map[string]any{"a": map[string]any{"a": int64(123), "b": "cat"}}},
 }
 
