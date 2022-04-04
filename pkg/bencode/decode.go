@@ -56,7 +56,6 @@ type UnmarshalTypeError struct {
 }
 
 func (e *UnmarshalTypeError) Error() string {
-	// TODO: properly stringify error
 	return fmt.Sprintf("bencode: cannot unmarshal %s into Go value of type %s", e.Value, e.Type)
 }
 
@@ -111,11 +110,25 @@ func (d *Decoder) value(v reflect.Value) error {
 	}
 }
 
+// valueInterface is like value but instead of unmarshalling into a variable
+// it unmarshals it into an any value and returns it.
+func (d *Decoder) valueInterface() (any, error) {
+	switch d.peek().Type {
+	case token.DICT:
+		return d.dictInterface()
+	case token.LIST:
+		return d.listInterface()
+	case token.NUMBER:
+		return d.numberInterface()
+	case token.STRING:
+		return d.stringInterface()
+	default:
+		panic(syntaxPanicMsg)
+	}
+}
+
 // dict unmarshals a dictionary from the decoder's token stream into v.
 func (d *Decoder) dict(v reflect.Value) error {
-	// consume the leading DICT token
-	d.mustConsume(token.DICT)
-
 	v, ok := indirect(v)
 	if !ok {
 		return &UnmarshalTypeError{Value: "dictionary", Type: v.Type(), Offset: d.curr.Offset}
@@ -135,8 +148,13 @@ func (d *Decoder) dict(v reflect.Value) error {
 	// TODO: case reflect.Struct:
 	case reflect.Interface:
 		if isAny(v) {
-			// TODO: add dictInterface function
-			v.Set(reflect.ValueOf(1))
+			value, err := d.dictInterface()
+			if err != nil {
+				return err
+			}
+
+			v.Set(reflect.ValueOf(value))
+			return nil
 		}
 
 		// only interface{} is supported
@@ -144,6 +162,9 @@ func (d *Decoder) dict(v reflect.Value) error {
 	default:
 		return &UnmarshalTypeError{Value: "dictionary", Type: v.Type(), Offset: d.curr.Offset}
 	}
+
+	// consume the leading DICT token
+	d.mustConsume(token.DICT)
 
 	// loop while there is a STRING key
 	for d.consume(token.STRING) {
@@ -169,11 +190,33 @@ func (d *Decoder) dict(v reflect.Value) error {
 	return nil
 }
 
+// dictInterface is like dict but instead of unmarshalling into a variable
+// it unmarshals it into an any value and returns it.
+func (d *Decoder) dictInterface() (any, error) {
+	// consume the leading DICT token
+	d.mustConsume(token.DICT)
+
+	v := make(map[string]any)
+
+	// loop while there is a STRING key
+	for d.consume(token.STRING) {
+		// extract key string from literal
+		key := extractString(d.curr.Literal)
+		value, err := d.valueInterface()
+		if err != nil {
+			return nil, err
+		}
+
+		v[key] = value
+	}
+
+	// consume END token
+	d.mustConsume(token.END)
+	return v, nil
+}
+
 // list unmarshals a list from the decoder's token stream into v.
 func (d *Decoder) list(v reflect.Value) error {
-	// consume leading LIST token
-	d.mustConsume(token.LIST)
-
 	v, ok := indirect(v)
 	if !ok {
 		return &UnmarshalTypeError{Value: "list", Type: v.Type(), Offset: d.curr.Offset}
@@ -184,8 +227,13 @@ func (d *Decoder) list(v reflect.Value) error {
 	case reflect.Interface:
 		// switch to interface mode
 		if isAny(v) {
-			// TODO: add listInterface function
-			v.Set(reflect.ValueOf(1))
+			value, err := d.listInterface()
+			if err != nil {
+				return err
+			}
+
+			v.Set(reflect.ValueOf(value))
+			return nil
 		}
 
 		// only interaface{} is supported
@@ -193,6 +241,9 @@ func (d *Decoder) list(v reflect.Value) error {
 	default:
 		return &UnmarshalTypeError{Value: "list", Type: v.Type(), Offset: d.curr.Offset}
 	}
+
+	// consume leading LIST token
+	d.mustConsume(token.LIST)
 
 	// loop while there are values
 	for i := 0; !d.match(token.END) && !d.match(token.ILLEGAL); i++ {
@@ -232,6 +283,27 @@ func (d *Decoder) list(v reflect.Value) error {
 	// consume END token
 	d.mustConsume(token.END)
 	return nil
+}
+
+// listInterface is like list but instead of unmarshalling into a variable
+// it unmarshals it into an any value and returns it.
+func (d *Decoder) listInterface() (any, error) {
+	// consume leading LIST token
+	d.mustConsume(token.LIST)
+
+	var v []any
+
+	// loop while end is not reached
+	for !d.consume(token.END) {
+		value, err := d.valueInterface()
+		if err != nil {
+			return nil, err
+		}
+
+		v = append(v, value)
+	}
+
+	return v, nil
 }
 
 // number unmarshals a number from the decoder's token stream into v.
@@ -291,6 +363,16 @@ func (d *Decoder) number(v reflect.Value) error {
 	return &UnmarshalTypeError{Value: "number", Type: v.Type(), Offset: d.curr.Offset}
 }
 
+// numberInterface is like number but instead of unmarshalling into a
+// variable it unmarshals it into an any value and returns it.
+func (d *Decoder) numberInterface() (any, error) {
+	// consume the NUMBER token
+	d.mustConsume(token.NUMBER)
+
+	lit := extractNumber(d.curr.Literal)
+	return strconv.ParseInt(lit, 10, 64)
+}
+
 // string unmarshals a string from the decoder's token stream into v.
 func (d *Decoder) string(v reflect.Value) error {
 	// consume the STRING token
@@ -325,6 +407,16 @@ func (d *Decoder) string(v reflect.Value) error {
 	}
 
 	return &UnmarshalTypeError{Value: "string", Type: v.Type(), Offset: d.curr.Offset}
+}
+
+// stringInterface is like string but instead of unmarshalling into a
+// variable it unmarshals it into an any value and returns it.
+func (d *Decoder) stringInterface() (any, error) {
+	// consume the STRING token
+	d.mustConsume(token.STRING)
+
+	// extract string bytes from string literal
+	return extractString(d.curr.Literal), nil
 }
 
 // mustConsume tries to consume a token of type t. If it can't it panics
