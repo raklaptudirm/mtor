@@ -43,6 +43,13 @@ var validTests = []struct {
 
 	// multiple top-level values
 	{"dede", false},
+
+	// proper ordering
+	{"d0:i0e1:ai0e1:bi0ee", true},
+
+	// improper ordering
+	{"d1:bi0e1:ai0ee", false},
+	{"d1:ai0e0:i0ee", false},
 }
 
 func TestValid(t *testing.T) {

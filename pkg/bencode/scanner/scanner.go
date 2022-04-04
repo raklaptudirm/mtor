@@ -42,9 +42,10 @@ func Valid(data []byte) bool {
 type Scanner struct {
 	data []byte // data to scan
 
-	ch       rune // current byte
-	offset   int  // start of current token
-	rdOffset int  // current read offset
+	ch       rune        // current byte
+	offset   int         // start of current token
+	rdOffset int         // current read offset
+	last     token.Token // the last emitted token
 
 	Tokens []token.Token // output array
 }
@@ -100,6 +101,11 @@ func (s *Scanner) scanDict() error {
 
 	s.emit(token.DICT)
 
+	// prev stores the previous key to check for proper ordering of the
+	// dictionary's keys, while first records if this is the first key,
+	// which can be anything
+	prev, first := "", true
+
 	// exit only on 'e' or eof
 	for r := s.peek(); r != 'e' && r != eof; r = s.peek() {
 		// scan the key string
@@ -107,6 +113,21 @@ func (s *Scanner) scanDict() error {
 		if err != nil {
 			return err
 		}
+
+		// get the raw string literal
+		key := s.last.RawString()
+
+		// key is not the first key and is lexicographically the same or
+		// below the previous key, so ordering is improper
+		if !first && key <= prev {
+			return &SyntaxError{
+				msg:    fmt.Sprintf("improper ordering of dictionary keys, %#v seen after %#v", key, prev),
+				Offset: s.last.Offset,
+			}
+		}
+
+		// update key data
+		prev, first = key, false
 
 		// scan the key's value
 		err = s.scanNext()
@@ -353,5 +374,6 @@ func (s *Scanner) emit(t token.Type) {
 	}
 
 	s.Tokens = append(s.Tokens, tok)
+	s.last = tok
 	s.reset()
 }
