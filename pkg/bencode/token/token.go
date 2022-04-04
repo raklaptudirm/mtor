@@ -13,7 +13,10 @@
 
 package token
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Type indicates the type of a Token.
 type Type int
@@ -61,4 +64,37 @@ type Token struct {
 	Type    Type   // type of the token
 	Literal string // the literal representation from the source
 	Offset  int    // the offest of the token in the source
+}
+
+// RawString extracts the raw string from a bencode string literal.
+//
+// Examples:
+// 3:cat -> cat
+// 4:boat -> boat
+func (t *Token) RawString() string {
+	if t.Type != STRING {
+		panic("invalid token type in receiver to token.String()")
+	}
+
+	_, s, ok := strings.Cut(t.Literal, ":")
+	if !ok {
+		panic("invalid string literal without ':'")
+	}
+
+	return s
+}
+
+// RawNumber removes the start and end markers from a bencode number
+// literal.
+//
+// Examples:
+// i123e -> 123
+// i-12e -> -12
+// i0e -> 0
+func (t *Token) RawNumber() string {
+	if t.Type != NUMBER {
+		panic("invalid token type in receiver to token.Number()")
+	}
+
+	return t.Literal[1 : len(t.Literal)-1]
 }

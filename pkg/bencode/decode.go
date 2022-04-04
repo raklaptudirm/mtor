@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
-	"strings"
 
 	"laptudirm.com/x/mtor/pkg/bencode/scanner"
 	"laptudirm.com/x/mtor/pkg/bencode/token"
@@ -169,7 +168,7 @@ func (d *Decoder) dict(v reflect.Value) error {
 	// loop while there is a STRING key
 	for d.consume(token.STRING) {
 		// extract key string from literal
-		key := extractString(d.curr.Literal)
+		key := d.curr.RawString()
 
 		switch v.Kind() {
 		case reflect.Map:
@@ -201,7 +200,7 @@ func (d *Decoder) dictInterface() (any, error) {
 	// loop while there is a STRING key
 	for d.consume(token.STRING) {
 		// extract key string from literal
-		key := extractString(d.curr.Literal)
+		key := d.curr.RawString()
 		value, err := d.valueInterface()
 		if err != nil {
 			return nil, err
@@ -312,7 +311,7 @@ func (d *Decoder) number(v reflect.Value) error {
 	d.mustConsume(token.NUMBER)
 
 	// extract number from number literal
-	literal := extractNumber(d.curr.Literal)
+	literal := d.curr.RawNumber()
 
 	v, ok := indirect(v)
 	if !ok {
@@ -369,7 +368,7 @@ func (d *Decoder) numberInterface() (any, error) {
 	// consume the NUMBER token
 	d.mustConsume(token.NUMBER)
 
-	lit := extractNumber(d.curr.Literal)
+	lit := d.curr.RawNumber()
 	return strconv.ParseInt(lit, 10, 64)
 }
 
@@ -379,7 +378,7 @@ func (d *Decoder) string(v reflect.Value) error {
 	d.mustConsume(token.STRING)
 
 	// extract string bytes from string literal
-	literal := extractString(d.curr.Literal)
+	literal := d.curr.RawString()
 
 	v, ok := indirect(v)
 	if !ok {
@@ -416,7 +415,7 @@ func (d *Decoder) stringInterface() (any, error) {
 	d.mustConsume(token.STRING)
 
 	// extract string bytes from string literal
-	return extractString(d.curr.Literal), nil
+	return d.curr.RawString(), nil
 }
 
 // mustConsume tries to consume a token of type t. If it can't it panics
@@ -465,27 +464,6 @@ func (d *Decoder) peek() token.Token {
 // atEnd checks whether the end of the token stream has been reached.
 func (d *Decoder) atEnd() bool {
 	return d.offset >= len(d.scanner.Tokens)
-}
-
-// extractNumber removes the start and end markers from a bencode number
-// literal.
-//
-// Examples:
-// i123e -> 123
-// i-12e -> -12
-// i0e -> 0
-func extractNumber(l string) string {
-	return l[1 : len(l)-1]
-}
-
-// extractString removes the length marker from a bencode string.
-//
-// Examples:
-// 3:cat -> cat
-// 4:boat -> boat
-func extractString(l string) string {
-	_, s, _ := strings.Cut(l, ":")
-	return s
 }
 
 // indirect indirects the value v while it is a pointer. When it reaches
