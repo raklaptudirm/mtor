@@ -16,6 +16,7 @@ package bencode
 import (
 	"fmt"
 	"reflect"
+	"sort"
 )
 
 // Marshal marshals v into a bencode string.
@@ -45,7 +46,7 @@ func (e *encoder) marshal(v reflect.Value) error {
 marshal:
 	switch v.Kind() {
 	case reflect.Map:
-		// TODO: e.marshalMap(v)
+		return e.marshalMap(v)
 	case reflect.Struct:
 		// TODO: e.marshalStruct(v)
 	case reflect.String:
@@ -63,6 +64,43 @@ marshal:
 		return &UnsupportedTypeError{v.Type()}
 	}
 
+	return nil
+}
+
+// marshalMap marshals a map into the encoder.
+func (e *encoder) marshalMap(v reflect.Value) error {
+	if v.Kind() != reflect.Map {
+		panic("non-map input to encoder.marshalMap()")
+	}
+
+	// key should be of string type
+	if v.Type().Key().Kind() != reflect.String {
+		return &UnsupportedTypeError{v.Type()}
+	}
+
+	// write leading 'd'
+	e.data += "d"
+
+	// get sorted key list
+	keys := v.MapKeys()
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i].String() < keys[j].String()
+	})
+
+	// marshal elements
+	for _, key := range keys {
+		// marshal key
+		e.marshalString(key)
+
+		// marshal value
+		err := e.marshal(v.MapIndex(key))
+		if err != nil {
+			return err
+		}
+	}
+
+	// write ending 'e'
+	e.data += "e"
 	return nil
 }
 
