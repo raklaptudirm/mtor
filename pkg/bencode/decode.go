@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"laptudirm.com/x/mtor/pkg/bencode/scanner"
 	"laptudirm.com/x/mtor/pkg/bencode/token"
@@ -133,6 +134,9 @@ func (d *Decoder) dict(v reflect.Value) error {
 		return &UnmarshalTypeError{Value: "dictionary", Type: v.Type(), Offset: d.curr.Offset}
 	}
 
+	// fs stores the fields of v if it is a struct
+	var fs *structFields
+
 	switch v.Kind() {
 	case reflect.Map:
 		// only maps with string keys are supported
@@ -144,7 +148,9 @@ func (d *Decoder) dict(v reflect.Value) error {
 		if v.IsNil() {
 			v.Set(reflect.MakeMap(v.Type()))
 		}
-	// TODO: case reflect.Struct:
+	case reflect.Struct:
+		// store field info into fs
+		fs = fields(v)
 	case reflect.Interface:
 		if isAny(v) {
 			value, err := d.dictInterface()
@@ -181,6 +187,26 @@ func (d *Decoder) dict(v reflect.Value) error {
 			}
 
 			v.SetMapIndex(reflect.ValueOf(key), f.Elem())
+		case reflect.Struct:
+			// try to find exact match
+			if i, ok := fs.names[key]; ok {
+				if err := d.value(v.Field(i)); err != nil {
+					return err
+				}
+
+				break
+			}
+
+			// exact match not found, try iterating to find case folded match
+			for _, f := range fs.fields {
+				if strings.EqualFold(key, f.name) {
+					if err := d.value(v.FieldByIndex(f.index)); err != nil {
+						return err
+					}
+
+					break
+				}
+			}
 		}
 	}
 
