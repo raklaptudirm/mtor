@@ -42,6 +42,7 @@ func (e *UnsupportedTypeError) Error() string {
 
 // marshal marshals v into the encoder e and returns an error if any.
 func (e *encoder) marshal(v reflect.Value) error {
+marshal:
 	switch v.Kind() {
 	case reflect.Map:
 		// TODO: e.marshalMap(v)
@@ -55,6 +56,9 @@ func (e *encoder) marshal(v reflect.Value) error {
 		e.marshalInt(v)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 		e.marshalUint(v)
+	case reflect.Pointer, reflect.Interface:
+		v = v.Elem()
+		goto marshal
 	default:
 		return &UnsupportedTypeError{v.Type()}
 	}
