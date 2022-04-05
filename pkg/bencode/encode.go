@@ -51,7 +51,7 @@ marshal:
 	case reflect.String:
 		e.marshalString(v)
 	case reflect.Array, reflect.Slice:
-		// TODO: e.marshalArray(v)
+		return e.marshalArray(v)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		e.marshalInt(v)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
@@ -75,6 +75,31 @@ func (e *encoder) marshalString(v reflect.Value) {
 	str := v.String()
 	// <length>:<raw bytes>
 	e.data += fmt.Sprintf("%d:%s", len(str), str)
+}
+
+// marshalArray marshals an array or slice into the encoder.
+func (e *encoder) marshalArray(v reflect.Value) error {
+	switch v.Kind() {
+	// check if v is array or slice
+	case reflect.Array, reflect.Slice:
+		// write leading 'l'
+		e.data += "l"
+
+		length := v.Len()
+		for i := 0; i < length; i++ {
+			// marshal each element
+			err := e.marshal(v.Index(i))
+			if err != nil {
+				return err
+			}
+		}
+
+		// write ending 'e'
+		e.data += "e"
+		return nil
+	default:
+		panic("non-array input to encoder.marshalArray()")
+	}
 }
 
 // marshalInt marshals an int type into the encoder.
