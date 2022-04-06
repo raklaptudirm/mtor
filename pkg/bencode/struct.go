@@ -15,6 +15,7 @@ package bencode
 
 import (
 	"reflect"
+	"sort"
 	"strings"
 )
 
@@ -67,6 +68,14 @@ func parseField(f reflect.StructField) field {
 type structFields struct {
 	fields []field        // list of fields of the structure
 	names  map[string]int // list of names to find exact match
+}
+
+// order sorts the fields slice of the structFields according to their
+// names using lexicographical ordering.
+func (s *structFields) order() {
+	sort.Slice(s.fields, func(i, j int) bool {
+		return s.fields[i].name < s.fields[j].name
+	})
 }
 
 // fields parses a reflect.Value of Kind Struct into a structFields value.

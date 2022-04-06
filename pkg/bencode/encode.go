@@ -48,7 +48,7 @@ marshal:
 	case reflect.Map:
 		return e.marshalMap(v)
 	case reflect.Struct:
-		// TODO: e.marshalStruct(v)
+		return e.marshalStruct(v)
 	case reflect.String:
 		e.marshalString(v)
 	case reflect.Array, reflect.Slice:
@@ -102,6 +102,64 @@ func (e *encoder) marshalMap(v reflect.Value) error {
 	// write ending 'e'
 	e.data += "e"
 	return nil
+}
+
+// marshalStruct marshals a struct into the encoder.
+func (e *encoder) marshalStruct(v reflect.Value) error {
+	if v.Kind() != reflect.Struct {
+		panic("non-struct input to encoder.marshalStruct()")
+	}
+
+	// write leading 'd'
+	e.data += "d"
+
+	// get sorted key list
+	keys := fields(v)
+	keys.order()
+
+	// marshal elements
+	for _, key := range keys.fields {
+		if key.ignore {
+			continue
+		}
+
+		d := v.FieldByIndex(key.index)
+
+		if key.omitempty && isEmpty(d) {
+			continue
+		}
+
+		// marshal key
+		e.marshalString(reflect.ValueOf(key.name))
+
+		// marshal value
+		err := e.marshal(d)
+		if err != nil {
+			return err
+		}
+	}
+
+	// write ending 'e'
+	e.data += "e"
+	return nil
+}
+
+// isEmpty checks if the value is empty and should be omitted. An empty
+// value is defined as 0, a nil pointer, a nil interface value, and any
+// empty array, slice, map, or string.
+func isEmpty(v reflect.Value) bool {
+	switch v.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return v.Int() == 0
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return v.Uint() == 0
+	case reflect.Array, reflect.Slice, reflect.Map, reflect.String:
+		return v.Len() == 0
+	case reflect.Pointer, reflect.Interface:
+		return v.IsNil()
+	default:
+		return false
+	}
 }
 
 // marshalString marshals a string into the encoder.
