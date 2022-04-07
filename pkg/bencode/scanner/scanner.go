@@ -24,7 +24,7 @@ import (
 // New creates a new Scanner with the provided data and returns a pointer
 // to it.
 func New(data []byte) *Scanner {
-	return &Scanner{data: data}
+	return &Scanner{Data: data}
 }
 
 // Valid checks if the provided data is valid bencode. It returns true if
@@ -40,7 +40,7 @@ func Valid(data []byte) bool {
 // data, while checking syntax, and appending all emitted tokens to the
 // s.Tokens array.
 type Scanner struct {
-	data []byte // data to scan
+	Data []byte // data to scan
 
 	ch       rune        // current byte
 	offset   int         // start of current token
@@ -220,8 +220,8 @@ func (s *Scanner) scanStr() error {
 	}
 
 	// check if length takes us past scanners end
-	if len(s.data)-s.rdOffset < length {
-		s.rdOffset = len(s.data)
+	if len(s.Data)-s.rdOffset < length {
+		s.rdOffset = len(s.Data)
 		return s.error("unexpected end of input while scanning string")
 	}
 
@@ -305,7 +305,7 @@ func (s *Scanner) Valid() error {
 // literal returns the bytes present between the scanner's offset and read
 // offset, or the currently scanned bytes.
 func (s *Scanner) literal() []byte {
-	return s.data[s.offset:s.rdOffset]
+	return s.Data[s.offset:s.rdOffset]
 }
 
 // reset sets the scanner's offset to it's read offset as preparation to start
@@ -343,12 +343,12 @@ func (s *Scanner) peek() rune {
 		return eof
 	}
 
-	return rune(s.data[s.rdOffset])
+	return rune(s.Data[s.rdOffset])
 }
 
 // atEnd reports if the scanner has reached the end of it's input.
 func (s *Scanner) atEnd() bool {
-	return s.rdOffset >= len(s.data)
+	return s.rdOffset >= len(s.Data)
 }
 
 // runeError returns a new SyntaxError with the message:
