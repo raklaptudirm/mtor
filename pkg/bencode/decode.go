@@ -226,6 +226,9 @@ func (d *decoder) dict(v reflect.Value) error {
 					break
 				}
 			}
+
+			// discard value
+			d.valueInterface()
 		}
 	}
 
