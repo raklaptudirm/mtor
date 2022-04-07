@@ -119,13 +119,9 @@ func (e *encoder) marshalStruct(v reflect.Value) error {
 
 	// marshal elements
 	for _, key := range keys.fields {
-		if key.ignore {
-			continue
-		}
-
 		d := v.FieldByIndex(key.index)
 
-		if key.omitempty && isEmpty(d) {
+		if key.contains("omitempty") && isEmpty(d) {
 			continue
 		}
 

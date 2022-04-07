@@ -25,42 +25,55 @@ type field struct {
 	index []int // index in struct
 
 	// tag information
-	ignore    bool   // ignore field
-	name      string // bencode name
-	omitempty bool   // omit if empty
+	name    string // bencode name
+	options string // tag options
+}
+
+// contains checks if the receiver field contains the given tag.
+func (f *field) contains(target string) bool {
+	rest := f.options
+
+	for {
+		// get leading option from rest
+		option, rest, _ := strings.Cut(rest, ",")
+
+		// check if option equals target
+		if option == target {
+			return true
+		}
+
+		// check if no options are left
+		if rest == "" {
+			return false
+		}
+	}
 }
 
 // parseField parses a reflect.StructField and its tags as a field.
-func parseField(f reflect.StructField) field {
+func parseField(f reflect.StructField) (field, bool) {
 	// get bencode tag
 	tag := f.Tag.Get("bencode")
 
 	var name, options string
-	var omitempty bool
 
-	// check if field is to be ignored: "-"
-	ignore := tag == "-"
+	// return false if field is to be ignored: "-"
+	if tag == "-" {
+		return field{}, false
+	}
 
-	if !ignore {
-		// `bencode:"name,omitempty"`
-		name, options, _ = strings.Cut(tag, ",")
+	// `bencode:"name,option1,option2"`
+	name, options, _ = strings.Cut(tag, ",")
 
-		// if tag does not specify name, use field name
-		if name == "" {
-			name = f.Name
-		}
-
-		// check if field is to be omitted if it is the zero value during
-		// marshalling
-		omitempty = options == "omitempty"
+	// if tag does not specify name, use field name
+	if name == "" {
+		name = f.Name
 	}
 
 	return field{
-		index:     f.Index,
-		ignore:    ignore,
-		name:      name,
-		omitempty: omitempty,
-	}
+		index:   f.Index,
+		name:    name,
+		options: options,
+	}, true
 }
 
 // structFields stores necessary data about a struct's fields required
@@ -91,7 +104,12 @@ func fields(v reflect.Value) *structFields {
 	n := v.NumField()
 	// iterate through the fields
 	for i := 0; i < n; i++ {
-		f := parseField(v.Type().Field(i))
+		f, ok := parseField(v.Type().Field(i))
+
+		// if not ok, ignore field
+		if !ok {
+			continue
+		}
 
 		s.fields = append(s.fields, f) // add field to list
 		s.names[f.name] = i            // store index as name
