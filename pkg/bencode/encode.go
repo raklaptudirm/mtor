@@ -31,6 +31,12 @@ type encoder struct {
 	data string // result string
 }
 
+// Marshaler is the interface implemented by types that can marshal
+// themselves into valid Bencode.
+type Marshaler interface {
+	MarshalBencode() ([]byte, error)
+}
+
 // UnsupportedTypeError is returned by Marshal when an unsupported go type is
 // marshalled.
 type UnsupportedTypeError struct {
@@ -44,6 +50,12 @@ func (e *UnsupportedTypeError) Error() string {
 // marshal marshals v into the encoder e and returns an error if any.
 func (e *encoder) marshal(v reflect.Value) error {
 marshal:
+	// check if value implements Marshaler
+	if isMarshaler(v) {
+		return e.marshaler(v)
+	}
+
+	// otherwise type switch
 	switch v.Kind() {
 	case reflect.Map:
 		return e.marshalMap(v)
@@ -61,10 +73,17 @@ marshal:
 		v = v.Elem()
 		goto marshal
 	default:
+		// type not supported
 		return &UnsupportedTypeError{v.Type()}
 	}
 
 	return nil
+}
+
+// isMarshaler checks if the provided reflect.Value implements the
+// Marshaler interface.
+func isMarshaler(v reflect.Value) bool {
+	return v.Type().Implements(reflect.TypeOf((*Marshaler)(nil)).Elem())
 }
 
 // marshalMap marshals a map into the encoder.
@@ -204,4 +223,17 @@ func (e *encoder) marshalInt(v reflect.Value) {
 func (e *encoder) marshalUint(v reflect.Value) {
 	// i<number>e
 	e.data += fmt.Sprintf("i%de", v.Uint())
+}
+
+// marshaler marshals a value implementing the Marshaler interface into
+// the encoder using their MarshalBencode function.
+func (e *encoder) marshaler(v reflect.Value) error {
+	// type cast to Marshaler and call MarshalBencode
+	b, err := v.Interface().(Marshaler).MarshalBencode()
+	if !Valid(b) {
+		panic(fmt.Sprintf("(%s).MarshalBencode() returned invalid bencode string %#v", v.Type(), string(b)))
+	}
+
+	e.data += string(b)
+	return err
 }
