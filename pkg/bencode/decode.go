@@ -47,6 +47,12 @@ type decoder struct {
 // invalid tokens from the scanner without an error.
 var syntaxPanicMsg = "bencode: invalid syntax without scanner error"
 
+// Unmarshaler is the interface implemented by types that can unmarshal
+// a bencode description of themselves.
+type Unmarshaler interface {
+	UnmarshalBencode([]byte) error
+}
+
 // UnmarshalTypeError represents an error where a bencode type is being
 // unmarshalled into an invalid go type.
 type UnmarshalTypeError struct {
@@ -129,7 +135,20 @@ func (d *decoder) valueInterface() (any, error) {
 
 // dict unmarshals a dictionary from the decoder's token stream into v.
 func (d *decoder) dict(v reflect.Value) error {
-	v, ok := indirect(v)
+	// indirect the value
+	m, v, ok := indirect(v)
+	// if indirect found an Unmarshaler, use that
+	if m != nil {
+		start := d.srcOffset()
+
+		_, err := d.dictInterface()
+		if err != nil {
+			return err
+		}
+
+		return m.UnmarshalBencode(d.scanner.Data[start:d.srcOffset()])
+	}
+
 	if !ok {
 		return &UnmarshalTypeError{Value: "dictionary", Type: v.Type(), Offset: d.curr.Offset}
 	}
@@ -242,7 +261,20 @@ func (d *decoder) dictInterface() (any, error) {
 
 // list unmarshals a list from the decoder's token stream into v.
 func (d *decoder) list(v reflect.Value) error {
-	v, ok := indirect(v)
+	// indirect the value
+	m, v, ok := indirect(v)
+	// if indirect found an Unmarshaler, use that
+	if m != nil {
+		start := d.srcOffset()
+
+		_, err := d.listInterface()
+		if err != nil {
+			return err
+		}
+
+		return m.UnmarshalBencode(d.scanner.Data[start:d.srcOffset()])
+	}
+
 	if !ok {
 		return &UnmarshalTypeError{Value: "list", Type: v.Type(), Offset: d.curr.Offset}
 	}
@@ -333,16 +365,29 @@ func (d *decoder) listInterface() (any, error) {
 
 // number unmarshals a number from the decoder's token stream into v.
 func (d *decoder) number(v reflect.Value) error {
+	// indirect the value
+	m, v, ok := indirect(v)
+	// if indirect found an Unmarshaler, use that
+	if m != nil {
+		start := d.srcOffset()
+
+		_, err := d.numberInterface()
+		if err != nil {
+			return err
+		}
+
+		return m.UnmarshalBencode(d.scanner.Data[start:d.srcOffset()])
+	}
+
+	if !ok {
+		return &UnmarshalTypeError{Value: "number", Type: v.Type(), Offset: d.curr.Offset}
+	}
+
 	// consume the NUMBER token
 	d.mustConsume(token.NUMBER)
 
 	// extract number from number literal
 	literal := d.curr.RawNumber()
-
-	v, ok := indirect(v)
-	if !ok {
-		return &UnmarshalTypeError{Value: "number", Type: v.Type(), Offset: d.curr.Offset}
-	}
 
 	switch v.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
@@ -400,16 +445,29 @@ func (d *decoder) numberInterface() (any, error) {
 
 // string unmarshals a string from the decoder's token stream into v.
 func (d *decoder) string(v reflect.Value) error {
+	// indirect the value
+	m, v, ok := indirect(v)
+	// if indirect found an Unmarshaler, use that
+	if m != nil {
+		start := d.srcOffset()
+
+		_, err := d.stringInterface()
+		if err != nil {
+			return err
+		}
+
+		return m.UnmarshalBencode(d.scanner.Data[start:d.srcOffset()])
+	}
+
+	if !ok {
+		return &UnmarshalTypeError{Value: "string", Type: v.Type(), Offset: d.curr.Offset}
+	}
+
 	// consume the STRING token
 	d.mustConsume(token.STRING)
 
 	// extract string bytes from string literal
 	literal := d.curr.RawString()
-
-	v, ok := indirect(v)
-	if !ok {
-		return &UnmarshalTypeError{Value: "string", Type: v.Type(), Offset: d.curr.Offset}
-	}
 
 	switch v.Kind() {
 	case reflect.String:
@@ -487,29 +545,49 @@ func (d *decoder) peek() token.Token {
 	return d.scanner.Tokens[d.offset]
 }
 
+// srcOffset returns the current offset of the decoder in the source
+// string. It is the offset of the current token added to it's length.
+func (d *decoder) srcOffset() int {
+	return d.curr.Offset + len(d.curr.Literal)
+}
+
 // atEnd checks whether the end of the token stream has been reached.
 func (d *decoder) atEnd() bool {
 	return d.offset >= len(d.scanner.Tokens)
 }
 
 // indirect indirects the value v while it is a pointer. When it reaches
-// a non pointer, it returns v along with whether v is a valid settable
-// value.
-func indirect(v reflect.Value) (reflect.Value, bool) {
+// a non pointer or an Unmarshaler, it returns v along with whether v is
+// a valid settable value.
+func indirect(v reflect.Value) (Unmarshaler, reflect.Value, bool) {
 	v0 := v
+	// check if v is a pointer
 	for v.Kind() == reflect.Pointer {
+		// if it is nil, allocate new pointer
 		if v.IsNil() {
 			v.Set(reflect.New(v.Type().Elem()))
 		}
 
+		// check if v implements Unmarshaler
+		if u, ok := v.Interface().(Unmarshaler); ok {
+			return u, v, true
+		}
+
+		// indirect the pointer
 		v = reflect.Indirect(v)
 	}
 
-	if v.IsValid() && v.CanSet() {
-		return v, true
+	// check if v implements Unmarshaler
+	if u, ok := v.Interface().(Unmarshaler); ok {
+		return u, v, true
 	}
 
-	return v0, false
+	// check if v is non-zero and settable
+	if v.IsValid() && v.CanSet() {
+		return nil, v, true
+	}
+
+	return nil, v0, false
 }
 
 // isAny checks if the provided reflect.Value has a type of any.
