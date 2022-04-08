@@ -20,10 +20,10 @@ import (
 )
 
 // Marshal marshals v into a bencode string.
-func Marshal(v any) (string, error) {
+func Marshal(v any) ([]byte, error) {
 	e := &encoder{}
 	err := e.marshal(reflect.ValueOf(v))
-	return e.data, err
+	return []byte(e.data), err
 }
 
 // encoder stores the current state of the marshalling.

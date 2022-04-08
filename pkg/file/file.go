@@ -217,7 +217,7 @@ func (i *info) hash() ([20]byte, error) {
 		return [20]byte{}, err
 	}
 
-	return sha1.Sum([]byte(b)), nil
+	return sha1.Sum(b), nil
 }
 
 // remove excess removes the files key from the bencode for single file
