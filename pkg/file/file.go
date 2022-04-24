@@ -14,7 +14,6 @@
 package file
 
 import (
-	"bytes"
 	"crypto/sha1"
 	"fmt"
 	"io"
@@ -23,7 +22,7 @@ import (
 	"path"
 	"time"
 
-	"github.com/jackpal/bencode-go"
+	"laptudirm.com/x/mtor/pkg/bencode"
 	"laptudirm.com/x/mtor/pkg/torrent"
 )
 
@@ -32,7 +31,7 @@ const Port = 6881
 
 // file represents a .torrent metainfo file.
 type file struct {
-	Info     info   `bencode:"info"`     // info section of metainfo
+	Info     *info  `bencode:"info"`     // info section of metainfo
 	Announce string `bencode:"announce"` // tracker announce url
 
 	Date    int64  `bencode:"creation date"` // creation timestamp
@@ -45,14 +44,15 @@ type info struct {
 	// common fields
 	PieceLen int    `bencode:"piece length"` // length of each piece
 	Pieces   string `bencode:"pieces"`       // hash of each piece
+
 	// file name in single-file torrent, directory name in multi-file torrent
 	Name string `bencode:"name"`
 
 	// single-file only
-	Length int `bencode:"length"` // length of file in single-file torrent
+	Length int `bencode:"length,omitempty"` // length of file in single-file torrent
 
 	// multi-file only
-	Files []singleFile `bencode:"files"` // files in multi-file torrent
+	Files []singleFile `bencode:"files,omitempty"` // files in multi-file torrent
 }
 
 // file represtents a single file in multi-file torrent.
@@ -212,15 +212,11 @@ func (f *file) Torrent() (*torrent.Torrent, error) {
 
 // hash calculates the infohash of info.
 func (i *info) hash() ([20]byte, error) {
-	var buf bytes.Buffer
-	err := bencode.Marshal(&buf, *i)
+	b, err := bencode.Marshal(i)
 	if err != nil {
 		return [20]byte{}, err
 	}
 
-	// this is really bad code, fix the bad code
-	// TODO: bad hack, remove as soon as possible
-	b := removeExcess(buf.Bytes())
 	return sha1.Sum(b), nil
 }
 
@@ -274,7 +270,12 @@ func (f *file) isSingleFile() bool {
 func Open(r io.Reader) (*file, error) {
 	var f file
 
-	err := bencode.Unmarshal(r, &f)
+	b, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+
+	err = bencode.Unmarshal(b, &f)
 	if err != nil {
 		return nil, err
 	}

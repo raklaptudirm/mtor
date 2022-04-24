@@ -15,12 +15,13 @@ package torrent
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"time"
 
-	"github.com/jackpal/bencode-go"
+	"laptudirm.com/x/mtor/pkg/bencode"
 	"laptudirm.com/x/mtor/pkg/peer"
 )
 
@@ -119,7 +120,12 @@ func (t *Torrent) requestTracker(n int) (*trackerResponse, error) {
 
 	var trackerRes trackerResponse
 	// unmarshal bencode response
-	err = bencode.Unmarshal(res.Body, &trackerRes)
+	b, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	err = bencode.Unmarshal(b, &trackerRes)
 	if err != nil {
 		return nil, err
 	}
