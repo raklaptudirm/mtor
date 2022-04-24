@@ -95,15 +95,15 @@ func (c *Conn) getBitfield() (bitfield.Bitfield, error) {
 	// await message from peer
 	msg, err := message.Read(c.Conn)
 	if err != nil {
-		return nil, err
+		return bitfield.Bitfield{}, err
 	}
 
 	// expect Message of type Bitfield
 	if msg.Identifier != message.Bitfield {
-		return nil, fmt.Errorf("expected bitfield message, received %v", msg.Identifier)
+		return bitfield.Bitfield{}, fmt.Errorf("expected bitfield message, received %v", msg.Identifier)
 	}
 
-	return msg.Payload, nil
+	return bitfield.New(msg.Payload), nil
 }
 
 // NewConn creates a new p2p Conn with the provided peer.
