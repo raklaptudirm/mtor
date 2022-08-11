@@ -6,10 +6,8 @@
 ### Installation
 
 ```bash
-git clone https://github.com/raklaptudirm/mtor
-cd mtor
-go build ./cmd/mtor
-./mtor [torrent file] # put this file in your path
+go install laptudirm.com/x/mtor/cmd/mtor@latest
+mtor [torrent file]
 ```
 
 ### Roadmap
